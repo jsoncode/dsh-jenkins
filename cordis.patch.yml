@@ -1,0 +1,10 @@
+# dsh-jenkins-cli 静态插件 · 组合包 patch（docs/develop/basic/publish 形态）
+#
+# 作为 dsh.bundle 组合包的分发层：插件行按包名引用（Node 模块解析已安装代码），
+# 而非相对源码路径。安装方式见 README.md。
+
+- insert:
+    - id: dsh-jenkins-cli
+      name: dsh-jenkins-cli
+      config:
+        servers: []
