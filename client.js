@@ -1,5 +1,5 @@
 /**
- * dsh-jenkins-cli —— 浏览器半边（client bundle）
+ * dsh-jenkins —— 浏览器半边（client bundle）
  *
  * 格式：window.__ModuleLoader__.load({ id, factory }) —— 执行 bundle 只注册工厂，
  * 工厂在物化时运行并导出 { name, inject, apply }（参考 @lemcae/dsh-balance）。
@@ -7,17 +7,17 @@
  * 功能：
  * 1. 设置 → Jenkins Cli 配置页：多服务器管理（settings.section）。
  * 2. 侧边栏底部按钮（sidebar.footer.action）：当前工作区根目录存在
- *    dsh-jenkins-cli.{json,js,ts} 配置时显示，点击打开「执行 Jenkins Job」弹框。
+ *    dsh-jenkins.{json,js,ts} 配置时显示，点击打开「执行 Jenkins Job」弹框。
  * 3. 弹框（shell.overlay）：环境 Tab（dev/uat/prod…）切换 → 参数表单回显 →
  *    触发构建 → 轮询状态（ctx.interval）。
  *
  * 界面文案支持中/英文（跟随主界面语言 document.lang / navigator.language）；
  * 宿主错误通过 code 映射为本地化文本（tErr），未知错误回退原文。
- * 与宿主通信：ctx.remote.commands.execute(sessionId, '/dsh-jenkins-cli <json>')。
+ * 与宿主通信：ctx.remote.commands.execute(sessionId, '/dsh-jenkins <json>')。
  * 本文件不含任何绝对路径。
  */
 window.__ModuleLoader__.load({
-  id: 'dsh-jenkins-cli',
+  id: 'dsh-jenkins',
   factory: (require) => {
     const React = require('react')
     // dsh 官方组件：Modal（受控弹框，portal 到 body、Esc/遮罩关闭）承载「搜索框 + 可滚动列表」的选择器
@@ -64,7 +64,7 @@ window.__ModuleLoader__.load({
         selectJobFirst: '请先在 Job 列表中选择要发布的 Job',
         templateBtn: '模板',
         templateTitle: '配置模板',
-        templateHint: '选择格式查看 dsh-jenkins-cli 配置模板（放到工作区根目录，含多环境参数）',
+        templateHint: '选择格式查看 dsh-jenkins 配置模板（放到工作区根目录，含多环境参数）',
         copy: '复制',
         copied: '已复制',
         loadingParams: '加载任务参数…',
@@ -148,7 +148,7 @@ window.__ModuleLoader__.load({
           'auth-failed': '认证失败：用户名或 Token 不正确（HTTP 401）',
           'forbidden': '权限不足（HTTP 403）',
           'connect-failed': '连接失败，请检查服务器地址',
-          'no-config': '工作区根目录未找到 dsh-jenkins-cli.json/js/ts 配置',
+          'no-config': '工作区根目录未找到 dsh-jenkins.json/js/ts 配置',
           'env-missing': '环境不存在',
           'redirect': '服务器返回重定向，请检查服务器地址是否为最终地址（如 https://…）',
           'trigger-http': '触发构建失败',
@@ -190,7 +190,7 @@ window.__ModuleLoader__.load({
         selectJobFirst: 'Select a job from the list first',
         templateBtn: 'Template',
         templateTitle: 'Config Template',
-        templateHint: 'Choose a format to view the dsh-jenkins-cli config template (place it in the workspace root; supports multiple environments)',
+        templateHint: 'Choose a format to view the dsh-jenkins config template (place it in the workspace root; supports multiple environments)',
         copy: 'Copy',
         copied: 'Copied',
         loadingParams: 'Loading job parameters…',
@@ -274,7 +274,7 @@ window.__ModuleLoader__.load({
           'auth-failed': 'Authentication failed: wrong username or Token (HTTP 401)',
           'forbidden': 'Permission denied (HTTP 403)',
           'connect-failed': 'Connection failed; check the server URL',
-          'no-config': 'No dsh-jenkins-cli.json/js/ts config in workspace root',
+          'no-config': 'No dsh-jenkins.json/js/ts config in workspace root',
           'env-missing': 'Environment not found',
           'redirect': 'Server returned a redirect; check that the URL is the final one (e.g. https://…)',
           'trigger-http': 'Failed to trigger build',
@@ -324,7 +324,7 @@ window.__ModuleLoader__.load({
     }
 
     // ── 发布参数回显缓存（按工作区路径，浏览器 localStorage；不可用时静默降级）──
-    const CACHE_KEY = 'dsh-jenkins-cli.lastParams.v1'
+    const CACHE_KEY = 'dsh-jenkins.lastParams.v1'
     const readCache = () => {
       try {
         const raw = window.localStorage.getItem(CACHE_KEY)
@@ -340,7 +340,7 @@ window.__ModuleLoader__.load({
     }
 
     // ── 发布历史记录（按工作区路径，浏览器 localStorage；最近 50 条）──
-    const HISTORY_KEY = 'dsh-jenkins-cli.history.v1'
+    const HISTORY_KEY = 'dsh-jenkins.history.v1'
     const readHistory = (cwd) => {
       try {
         const all = JSON.parse(window.localStorage.getItem(HISTORY_KEY) || '{}')
@@ -391,7 +391,7 @@ window.__ModuleLoader__.load({
     }
 
     // ── 注入样式（与 dsh-balance 相同的 bundle CSS 注入模式）──
-    const CSS_ID = 'dsh-jenkins-cli/settings.css'
+    const CSS_ID = 'dsh-jenkins/settings.css'
     const css = [
       // 通用
       '.dshj-btn{border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-primary);border-radius:8px;padding:6px 14px;font-size:13px;cursor:pointer}',
@@ -515,20 +515,20 @@ window.__ModuleLoader__.load({
     ].join('\n')
     if (typeof document !== 'undefined' && document.querySelector('style[data-plugin-css="' + CSS_ID + '"]') === null) {
       const tag = document.createElement('style')
-      tag.dataset.plugin = 'dsh-jenkins-cli'
+      tag.dataset.plugin = 'dsh-jenkins'
       tag.dataset.pluginCss = CSS_ID
       tag.textContent = css
       document.head.appendChild(tag)
     }
 
-    const name = 'dsh-jenkins-cli'
+    const name = 'dsh-jenkins'
     const inject = ['slots', 'remote', 'remote.commands', 'timer']
 
     // ── 与宿主通信：commands.execute → JSON 文本 → 结果载荷 ──────────
     function makeRun(ctx) {
       return async function run(sessionId, op) {
         try {
-          const execution = await ctx.remote.commands.execute(sessionId || '', '/dsh-jenkins-cli ' + JSON.stringify(op))
+          const execution = await ctx.remote.commands.execute(sessionId || '', '/dsh-jenkins ' + JSON.stringify(op))
           const value = execution && execution.ok === true ? execution.value : undefined
           const text = value && value.result && typeof value.result.text === 'string' ? value.result.text : null
           if (text === null || text.length === 0) return { ok: false, error: t('cmdNoResult') }
@@ -975,7 +975,7 @@ window.__ModuleLoader__.load({
     ].join('')
     // __LOGO_B64_END__
 
-    // ── dsh-jenkins-cli 配置模板（json / js / ts，按界面语言选择）──────
+    // ── dsh-jenkins 配置模板（json / js / ts，按界面语言选择）──────
     const TEMPLATES = LANG === 'zh' ? {
       json: '{\n'
         + '  "job": "build-app",\n'
@@ -986,7 +986,7 @@ window.__ModuleLoader__.load({
         + '    "prod": { "BRANCH": "release-1.0", "DEPLOY": true  }\n'
         + '  }\n'
         + '}',
-      js: '// dsh-jenkins-cli.js — CommonJS 导出（工作区无 "type":"module" 时使用）\n'
+      js: '// dsh-jenkins.js — CommonJS 导出（工作区无 "type":"module" 时使用）\n'
         + 'module.exports = {\n'
         + '  job: \'build-app\',\n'
         + '  server: \'生产环境\',\n'
@@ -996,7 +996,7 @@ window.__ModuleLoader__.load({
         + '    prod: { BRANCH: \'release-1.0\', DEPLOY: true },\n'
         + '  },\n'
         + '}',
-      ts: '// dsh-jenkins-cli.ts — ESM 导出（经 tsx 求值）\n'
+      ts: '// dsh-jenkins.ts — ESM 导出（经 tsx 求值）\n'
         + 'export default {\n'
         + '  job: \'build-app\',\n'
         + '  server: \'生产环境\',\n'
@@ -1016,7 +1016,7 @@ window.__ModuleLoader__.load({
         + '    "prod": { "BRANCH": "release-1.0", "DEPLOY": true  }\n'
         + '  }\n'
         + '}',
-      js: '// dsh-jenkins-cli.js — CommonJS export (use when the workspace has no "type":"module")\n'
+      js: '// dsh-jenkins.js — CommonJS export (use when the workspace has no "type":"module")\n'
         + 'module.exports = {\n'
         + '  job: \'build-app\',\n'
         + '  server: \'Production\',\n'
@@ -1026,7 +1026,7 @@ window.__ModuleLoader__.load({
         + '    prod: { BRANCH: \'release-1.0\', DEPLOY: true },\n'
         + '  },\n'
         + '}',
-      ts: '// dsh-jenkins-cli.ts — ESM export (evaluated via tsx)\n'
+      ts: '// dsh-jenkins.ts — ESM export (evaluated via tsx)\n'
         + 'export default {\n'
         + '  job: \'build-app\',\n'
         + '  server: \'Production\',\n'
@@ -1046,7 +1046,7 @@ window.__ModuleLoader__.load({
       if (slots === undefined) return
       const el = React.createElement
 
-      // ─── 侧边栏底部入口：当前工作区有 dsh-jenkins-cli 配置才显示 ──────────
+      // ─── 侧边栏底部入口：当前工作区有 dsh-jenkins 配置才显示 ──────────
 
       const FooterButton = (props) => {
         const wide = !!props.wide
@@ -1057,7 +1057,7 @@ window.__ModuleLoader__.load({
           ? props.useSessions((s) => s && s.current)
           : null
         if (!props.useWorkspaces || !props.useSessions) {
-          console.warn('[dsh-jenkins-cli] footer slot missing standard props', { hasWs: !!props.useWorkspaces, hasSs: !!props.useSessions })
+          console.warn('[dsh-jenkins] footer slot missing standard props', { hasWs: !!props.useWorkspaces, hasSs: !!props.useSessions })
         }
         const [launch, setLaunch] = React.useState(null)
         const cwd = React.useMemo(() => {
@@ -1069,13 +1069,13 @@ window.__ModuleLoader__.load({
           let alive = true
           setLaunch(null)
           if (!cwd) return
-          console.log('[dsh-jenkins-cli] footer check cwd=', cwd, 'session=', currentSessionId, 'workspaces=', (workspaceItems || []).map((w) => w.path))
+          console.log('[dsh-jenkins] footer check cwd=', cwd, 'session=', currentSessionId, 'workspaces=', (workspaceItems || []).map((w) => w.path))
           run(currentSessionId || '', { op: 'workspaceConfig', cwd }).then((r) => {
             if (!alive) return
-            console.log('[dsh-jenkins-cli] workspaceConfig result', r)
+            console.log('[dsh-jenkins] workspaceConfig result', r)
             if (r && r.ok && r.found && r.config) setLaunch({ cwd, config: r.config, sessionId: currentSessionId || '' })
           }).catch((e) => {
-            console.error('[dsh-jenkins-cli] workspaceConfig failed', cwd, e)
+            console.error('[dsh-jenkins] workspaceConfig failed', cwd, e)
           })
           return () => { alive = false }
         }, [cwd, currentSessionId])
@@ -1743,7 +1743,7 @@ window.__ModuleLoader__.load({
         }
         render() {
           if (this.state.error !== null) {
-            console.error('[dsh-jenkins-cli] render error in', this.props.label || 'component', this.state.error)
+            console.error('[dsh-jenkins] render error in', this.props.label || 'component', this.state.error)
             return el('div', { className: 'dshj-empty dshj-err' },
               (this.props.label || 'component') + ' error: ' + String((this.state.error && this.state.error.message) || this.state.error))
           }
@@ -1796,7 +1796,7 @@ window.__ModuleLoader__.load({
           ),
           el('div', { className: 'dshj-hint' }, t('templateHint')),
           el('div', { className: 'dshj-code-head' },
-            el('span', { className: 'dshj-code-file' }, 'dsh-jenkins-cli.' + active),
+            el('span', { className: 'dshj-code-file' }, 'dsh-jenkins.' + active),
             el('button', { type: 'button', className: 'dshj-btn dshj-btn-small', onClick: doCopy }, copied ? t('copied') : t('copy')),
           ),
           el('pre', { className: 'dshj-code' }, code),
@@ -1806,12 +1806,12 @@ window.__ModuleLoader__.load({
       // ─── 注册 Slots ───────────────────────────────────────────────
 
       slots.inject('sidebar.footer.action', () => slots.register(
-        { name: 'sidebar.footer.action', id: 'dsh-jenkins-cli', order: 10 },
+        { name: 'sidebar.footer.action', id: 'dsh-jenkins', order: 10 },
         FooterButton,
       ))
 
       slots.inject('settings.section', () => slots.register(
-        { name: 'settings.section', id: 'dsh-jenkins-cli', order: 25, label: () => dict.settingsNav },
+        { name: 'settings.section', id: 'dsh-jenkins', order: 25, label: () => dict.settingsNav },
         (props) => {
           let sessionId = ''
           if (props && typeof props.useSessions === 'function') {
@@ -1823,12 +1823,12 @@ window.__ModuleLoader__.load({
       ))
 
       slots.inject('shell.overlay', () => slots.register(
-        { name: 'shell.overlay', id: 'dsh-jenkins-cli-launcher', order: 100 },
+        { name: 'shell.overlay', id: 'dsh-jenkins-launcher', order: 100 },
         LauncherModal,
       ))
 
       slots.inject('shell.overlay', () => slots.register(
-        { name: 'shell.overlay', id: 'dsh-jenkins-cli-history', order: 110 },
+        { name: 'shell.overlay', id: 'dsh-jenkins-history', order: 110 },
         HistoryModal,
       ))
     }

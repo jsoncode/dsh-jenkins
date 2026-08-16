@@ -1,4 +1,4 @@
-# dsh-jenkins-cli
+# dsh-jenkins
 
 DeepSeek Harness 插件（**双面**：宿主 + 浏览器）：管理多台 Jenkins 服务器与 Token，
 支持设置页配置、模型工具触发构建、工作区级「执行 Jenkins Job」入口。无硬编码路径、
@@ -11,7 +11,7 @@ DeepSeek Harness 插件（**双面**：宿主 + 浏览器）：管理多台 Jenk
 - **设置 → Jenkins Cli 配置** 页（`settings.section`）：多服务器增删改查、测试连接、
   跳过 TLS 校验。仅 **服务器地址** 与 **Token** 必填（用户名为选填，缺省 `admin`）。
 - **工作区入口**（`sidebar.footer.action`）：当当前工作区根目录存在
-  `dsh-jenkins-cli.{json,js,ts}` 配置时，侧边栏底部出现一组按钮——**Jenkins logo 按钮**
+  `dsh-jenkins.{json,js,ts}` 配置时，侧边栏底部出现一组按钮——**Jenkins logo 按钮**
   （打开执行弹框）+ **历史按钮**（时钟图标，查看所有工作区最近 50 次发布记录，
   可按工作区筛选，默认全部）。
   执行弹框内**服务器 / Job / 环境可搜索下拉选择 → 参数表单回显 → 提交构建 → 轮询状态**
@@ -27,7 +27,7 @@ DeepSeek Harness 插件（**双面**：宿主 + 浏览器）：管理多台 Jenk
 ## 文件结构
 
 ```
-├── index.js            # 宿主半边：Config、settings namespace、dsh-jenkins-cli 命令、模型工具、工作区配置 op
+├── index.js            # 宿主半边：Config、settings namespace、dsh-jenkins 命令、模型工具、工作区配置 op
 ├── client.js           # 浏览器半边（__ModuleLoader__ bundle）：设置页、底部入口、执行弹框（可搜索下拉 + 上次参数回显）
 ├── index.d.ts          # 宿主类型声明
 ├── cordis.patch.yml    # 组合包 patch：按包名引用插件行（无路径）
@@ -36,7 +36,7 @@ DeepSeek Harness 插件（**双面**：宿主 + 浏览器）：管理多台 Jenk
 └── README.zh.md        # 本文档
 ```
 
-## 工作区配置文件（dsh-jenkins-cli.json / .js / .ts）
+## 工作区配置文件（dsh-jenkins.json / .js / .ts）
 
 放在**工作区根目录**，定义 job、目标服务器与多环境参数。`.json` 直接解析；
 `.js` / `.ts` 经 node 求值（`module.exports` 或 `export default`）：
@@ -64,12 +64,12 @@ DeepSeek Harness 插件（**双面**：宿主 + 浏览器）：管理多台 Jenk
 
 ```sh
 # 本地开发
-dsh plugin --profile web add ./dsh-jenkins-cli
+dsh plugin --profile web add ./dsh-jenkins
 
 # 发布后：npm / tarball / GitHub
-dsh plugin --profile web add dsh-jenkins-cli
-dsh plugin --profile web add ./dsh-jenkins-cli-0.1.4.tgz
-dsh plugin --profile web add github:you/dsh-jenkins-cli#<sha>
+dsh plugin --profile web add dsh-jenkins
+dsh plugin --profile web add ./dsh-jenkins-0.1.4.tgz
+dsh plugin --profile web add github:you/dsh-jenkins#<sha>
 
 dsh --profile web --dump-config   # 验证配置层
 dsh --profile web                 # 启动（宿主半边需重启才生效）
@@ -79,8 +79,8 @@ dsh --profile web                 # 启动（宿主半边需重启才生效）
 
 ```yaml
 - insert:
-    - id: dsh-jenkins-cli
-      name: dsh-jenkins-cli
+    - id: dsh-jenkins
+      name: dsh-jenkins
       config:
         servers:
           - id: prod
@@ -103,7 +103,7 @@ git push origin main   # 或 GitHub（纯 JS 包 git 安装无需 prepare 授权
 
 - Jenkins REST：`curl.exe`（经宿主 `shell` 服务），Basic 认证 + CSRF crumb +
   `--data-binary @-`（表单体经 stdin，UTF-8 无 BOM）；`-D -` 解析状态码与 `Location`。
-- 浏览器↔宿主：`ctx.remote.commands.execute(sessionId, '/dsh-jenkins-cli <json>')`，
+- 浏览器↔宿主：`ctx.remote.commands.execute(sessionId, '/dsh-jenkins <json>')`，
   宿主错误带 `code`，客户端按语言本地化（未覆盖的兜底显示原文）。
 - peerDependencies（`@deepseek-ai/cordis`、`dsh-tools`、`schemastery`、`dsh-settings`、
   `dsh-commands`、`dsh-session`、`dsh-api-remotes`、client-runtime/ui-slots/ui-settings/

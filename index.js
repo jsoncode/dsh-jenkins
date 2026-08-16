@@ -1,10 +1,10 @@
 /**
- * dsh-jenkins-cli —— Jenkins CLI 插件 · 宿主半边（可发布组合包，无硬编码路径）
+ * dsh-jenkins —— Jenkins CLI 插件 · 宿主半边（可发布组合包，无硬编码路径）
  *
  * 参考 @lemcae/dsh-balance 的双面结构：
- * - settings namespace（dsh-jenkins-cli.servers）持久化多服务器配置，base 层来自
+ * - settings namespace（dsh-jenkins.servers）持久化多服务器配置，base 层来自
  *   cordis.yml 的 config.servers（Schemastery 校验），用户层可经命令写入并持久化；
- * - `dsh-jenkins-cli` 命令：客户端（设置页）经 ctx.remote.commands.execute 调用，
+ * - `dsh-jenkins` 命令：客户端（设置页）经 ctx.remote.commands.execute 调用，
  *   参数为 JSON（{ op: 'list|save|delete|test|jobs|jobDetail|trigger|queueStatus|buildStatus', ... }），
  *   结果以 JSON 文本回传；
  * - 两个模型工具 dsh_jenkins_build / dsh_jenkins_status。
@@ -17,7 +17,7 @@ import Schema from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 
-export const name = 'dsh-jenkins-cli'
+export const name = 'dsh-jenkins'
 export const inject = ['shell', 'tools', 'settings', 'commands']
 
 /* ── 配置（docs/develop/basic/config）────────────────────────── */
@@ -215,7 +215,7 @@ export function apply(ctx, config) {
   // 的深冻结 + schemastery 校验原地改写导致的 "object is not extensible"）。
   let scope = null
   if (settings !== undefined) {
-    scope = settings.register(settingsNamespace('dsh-jenkins-cli'), JenkinsSettingsSchema, {
+    scope = settings.register(settingsNamespace('dsh-jenkins'), JenkinsSettingsSchema, {
       base: { serversJson: JSON.stringify(config.servers || []) },
     })
   }
@@ -256,12 +256,12 @@ export function apply(ctx, config) {
 
   // ─── 操作分发：命令与工具共用 ─────────────────────────────────
 
-  // 工作区根目录的 dsh-jenkins-cli.{json,js,ts} 配置文件（多环境 job 表单）。
+  // 工作区根目录的 dsh-jenkins.{json,js,ts} 配置文件（多环境 job 表单）。
   const fsService = ctx.get('fs')
 
   async function findConfigFile(cwd) {
     if (fsService === undefined) throw new Error('fs 服务不可用，无法读取工作区配置')
-    const names = ['dsh-jenkins-cli.json', 'dsh-jenkins-cli.js', 'dsh-jenkins-cli.ts']
+    const names = ['dsh-jenkins.json', 'dsh-jenkins.js', 'dsh-jenkins.ts']
     for (const name of names) {
       try {
         const target = await fsService.resolve(name, { cwd })
@@ -340,16 +340,16 @@ export function apply(ctx, config) {
 
     if (op === 'workspaceConfig') {
       const cwd = String(req.cwd || '').trim()
-      console.log('[dsh-jenkins-cli] workspaceConfig cwd=', cwd)
+      console.log('[dsh-jenkins] workspaceConfig cwd=', cwd)
       if (!cwd) return { ok: false, code: 'cwd-missing', error: 'Missing workspace path' }
       try {
         const config = await loadWorkspaceConfig(cwd)
-        console.log('[dsh-jenkins-cli] workspaceConfig found=', config !== null, config && config.file)
+        console.log('[dsh-jenkins] workspaceConfig found=', config !== null, config && config.file)
         return config === null
           ? { ok: true, found: false, config: null }
           : { ok: true, found: true, config }
       } catch (e) {
-        console.error('[dsh-jenkins-cli] workspaceConfig error', e)
+        console.error('[dsh-jenkins] workspaceConfig error', e)
         return { ok: false, code: errCodeOf(e), error: (e && e.message) || String(e) }
       }
     }
@@ -360,7 +360,7 @@ export function apply(ctx, config) {
       if (!cwd) return { ok: false, code: 'cwd-missing', error: 'Missing workspace path' }
       try {
         const config = await loadWorkspaceConfig(cwd)
-        if (config === null) return { ok: false, code: 'no-config', error: 'No dsh-jenkins-cli.json/js/ts config found in workspace root' }
+        if (config === null) return { ok: false, code: 'no-config', error: 'No dsh-jenkins.json/js/ts config found in workspace root' }
         const env = config.environments.find((e) => e.name === envName)
         if (!env) {
           return { ok: false, code: 'env-missing', envName, available: config.environments.map((e) => e.name), error: 'Environment not found: ' + envName + ' (available: ' + config.environments.map((e) => e.name).join(', ') + ')' }
@@ -569,7 +569,7 @@ export function apply(ctx, config) {
 
   if (commands !== undefined) {
     commands.register({
-      name: 'dsh-jenkins-cli',
+      name: 'dsh-jenkins',
       description: 'Jenkins CLI：管理服务器配置并触发/查询构建（设置界面/工作区入口调用）。Manage Jenkins servers and trigger/query builds (used by the settings UI and workspace entry). 参数为 JSON：'
         + '{ "op": "list|save|delete|test|jobs|jobDetail|trigger|queueStatus|buildStatus|workspaceConfig|workspaceTrigger", ... }。',
       input: { hint: '{"op":"list"}' },
