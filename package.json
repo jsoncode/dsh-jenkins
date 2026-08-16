@@ -3,6 +3,11 @@
   "version": "0.1.20",
   "description": "Jenkins CLI plugin (dual-face): multi-server config page, model tools, and a per-workspace Run-Jenkins-Job entry with environment tabs. Bilingual UI (zh/en), no hardcoded paths, publishable to npm / GitHub",
   "type": "module",
+  "scripts": {
+    "check": "node --check index.js && node --check client.js",
+    "release": "npm run check && npm version patch -m \"release: v%s\" && git push --follow-tags",
+    "publish:npm": "npm run check && npm publish --access public"
+  },
   "main": "index.js",
   "types": "index.d.ts",
   "exports": {
