@@ -1,6 +1,6 @@
 {
   "name": "dsh-jenkins",
-  "version": "0.1.20",
+  "version": "0.1.21",
   "description": "Jenkins CLI plugin (dual-face): multi-server config page, model tools, and a per-workspace Run-Jenkins-Job entry with environment tabs. Bilingual UI (zh/en), no hardcoded paths, publishable to npm / GitHub",
   "type": "module",
   "scripts": {
@@ -20,13 +20,13 @@
     "./package.json": "./package.json"
   },
   "files": [
-	  "index.js",
-	  "client.js",
-	  "index.d.ts",
-	  "cordis.patch.yml",
-	  "assets/logo.svg",
-	  "README.md",
-	  "README.zh.md"
+    "index.js",
+    "client.js",
+    "index.d.ts",
+    "cordis.patch.yml",
+    "assets/logo.svg",
+    "README.md",
+    "README.zh.md"
   ],
   "dsh": {
     "bundle": {
