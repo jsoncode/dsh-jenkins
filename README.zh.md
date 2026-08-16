@@ -1,4 +1,4 @@
-﻿# dsh-jenkins-cli
+# dsh-jenkins-cli
 
 DeepSeek Harness 插件（**双面**：宿主 + 浏览器）：管理多台 Jenkins 服务器与 Token，
 支持设置页配置、模型工具触发构建、工作区级「执行 Jenkins Job」入口。无硬编码路径、
@@ -11,9 +11,13 @@ DeepSeek Harness 插件（**双面**：宿主 + 浏览器）：管理多台 Jenk
 - **设置 → Jenkins Cli 配置** 页（`settings.section`）：多服务器增删改查、测试连接、
   跳过 TLS 校验。仅 **服务器地址** 与 **Token** 必填（用户名为选填，缺省 `admin`）。
 - **工作区入口**（`sidebar.footer.action`）：当当前工作区根目录存在
-  `dsh-jenkins-cli.{json,js,ts}` 配置时，侧边栏底部出现按钮，点击打开
-  **执行 Jenkins Job** 弹框——**环境 Tab（dev/uat/prod…）切换 → 参数表单回显 →
-  提交构建 → 轮询状态**（排队 → 构建中 → 结果，10 分钟超时）。
+  `dsh-jenkins-cli.{json,js,ts}` 配置时，侧边栏底部出现一组按钮——**Jenkins logo 按钮**
+  （打开执行弹框）+ **历史按钮**（时钟图标，查看所有工作区最近 50 次发布记录，
+  可按工作区筛选，默认全部）。
+  执行弹框内**服务器 / Job / 环境可搜索下拉选择 → 参数表单回显 → 提交构建 → 轮询状态**
+  （排队 → 构建中 → 结果，10 分钟超时）。同一工作区上次发布时提交的
+  **服务器 / Job / 环境 / 参数**会被记住，下次打开弹框自动回显（浏览器
+  `localStorage`）。
 - **模型工具**（docs/develop/basic/tool）：`dsh_jenkins_build`、`dsh_jenkins_status`。
 - **配置**（docs/develop/basic/config）：Schemastery `Config` + settings namespace
   将界面编辑持久化到 `$DSH_HOME/settings.yaml`（服务器列表以 JSON 字符串存储，
@@ -24,7 +28,7 @@ DeepSeek Harness 插件（**双面**：宿主 + 浏览器）：管理多台 Jenk
 
 ```
 ├── index.js            # 宿主半边：Config、settings namespace、dsh-jenkins-cli 命令、模型工具、工作区配置 op
-├── client.js           # 浏览器半边（__ModuleLoader__ bundle）：设置页、底部入口、环境 Tab 弹框
+├── client.js           # 浏览器半边（__ModuleLoader__ bundle）：设置页、底部入口、执行弹框（可搜索下拉 + 上次参数回显）
 ├── index.d.ts          # 宿主类型声明
 ├── cordis.patch.yml    # 组合包 patch：按包名引用插件行（无路径）
 ├── package.json        # dsh.bundle + dsh.client(web) manifest + peerDependencies
@@ -53,8 +57,8 @@ DeepSeek Harness 插件（**双面**：宿主 + 浏览器）：管理多台 Jenk
 - `server`（选填）：对应 设置 → Jenkins 里的服务器 name（缺省用唯一一台服务器）。
 - `environments`：环境名 → 参数键值（布尔值渲染为勾选框，其余为文本框）。
 
-存在该文件时，侧边栏底部出现「Jenkins」按钮 → 弹框内按环境 Tab 切换、回显参数、
-提交构建、轮询状态。
+存在该文件时，侧边栏底部出现「Jenkins」按钮 → 弹框内选择服务器 / Job / 环境（均可
+搜索）、回显参数、提交构建、轮询状态；同一工作区上次发布的参数下次自动回显。
 
 ## 安装
 

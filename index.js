@@ -71,37 +71,58 @@ function headerValue(headers, name) {
   return m ? m[1].trim() : undefined
 }
 
-async function runCurl(shell, server, args, opts) {
-  const curlArgs = server.insecure ? ['-k'] : []
-  const parts = [
-    "$ErrorActionPreference='Stop';",
-    'curl.exe -sS -m 40 -u ' + psQuote((server.username || 'admin') + ':' + server.token),
-  ]
-  for (const a of [...curlArgs, ...args]) parts.push(a)
-  const request = {
-    command: parts.join(' ') + '; exit $LASTEXITCODE',
-    timeoutMs: 50000,
-    stdoutMaxBytes: 8 * 1024 * 1024,
+async function runCurl(ctx, server, args, opts) {
+  // 用 ctx.subprocess 直接 spawn curl.exe（绕开 pwsh-sandbox 受限令牌导致的
+  // Schannel SEC_E_NO_CREDENTIALS —— 与 dsh-balance 拉余额同一路径）。
+  const sub = ctx.get('subprocess')
+  if (sub === undefined) throw new Error('subprocess 服务不可用，无法调用 Jenkins API')
+  let curlPath
+  try {
+    curlPath = await sub.resolveExecutable('curl.exe')
+  } catch {
+    curlPath = await sub.resolveExecutable('curl')
   }
-  if (opts?.stdin !== undefined) request.stdin = opts.stdin
-  const spec = shell.resolve(request)
-  const res = await shell.run(spec)
-  return {
-    exitCode: res.exitCode,
-    stdout: res.stdout?.text ?? '',
-    stderr: res.stderr?.text ?? '',
+  let cwd = '.'
+  const policy = ctx.get('sandboxPolicy')
+  if (policy !== undefined && typeof policy.workspaceRoot === 'string' && policy.workspaceRoot.length > 0) cwd = policy.workspaceRoot
+  const argv = [curlPath, '-sS', '-m', '40', '-u', (server.username || 'admin') + ':' + server.token]
+  if (server.insecure) argv.push('-k')
+  for (const a of args) argv.push(a)
+  let handle
+  try {
+    handle = sub.spawn({
+      argv,
+      cwd,
+      stdio: {
+        stdin: opts && opts.stdin !== undefined ? { data: opts.stdin } : 'ignore',
+        stdout: { mode: 'collect', maxBytes: 8 * 1024 * 1024 },
+        stderr: { mode: 'collect', maxBytes: 64 * 1024 },
+      },
+      graceMs: 5000,
+    })
+  } catch (e) {
+    throw new Error('启动 curl 失败：' + ((e && e.message) || String(e)))
   }
+  let outcome
+  try {
+    outcome = await handle.done
+  } catch (e) {
+    throw new Error('启动 curl 失败：' + ((e && e.message) || String(e)))
+  }
+  const stdout = handle.collected && handle.collected.stdout ? handle.collected.stdout.readFrom(0).text : ''
+  const stderr = handle.collected && handle.collected.stderr ? handle.collected.stderr.readFrom(0).text : ''
+  return { exitCode: outcome.exitCode, stdout, stderr }
 }
 
-async function jenkinsRequest(shell, server, path, opts) {
+async function jenkinsRequest(ctx, server, path, opts) {
   const method = opts?.method ?? 'GET'
   const form = opts?.form !== undefined ? opts.form : null
   const headers = opts?.headers ?? {}
   const args = ['-D', '-']
   if (method === 'POST') args.push('-X', 'POST')
-  for (const k of Object.keys(headers)) args.push('-H', psQuote(`${k}: ${headers[k]}`))
-  if (form !== null) args.push('--data-binary', "'@-'")
-  args.push(psQuote(normalizeBase(server.baseUrl) + path))
+  for (const k of Object.keys(headers)) args.push('-H', `${k}: ${headers[k]}`)
+  if (form !== null) args.push('--data-binary', '@-')
+  args.push(normalizeBase(server.baseUrl) + path)
 
   const runOpts = {}
   if (form !== null) {
@@ -109,7 +130,7 @@ async function jenkinsRequest(shell, server, path, opts) {
     for (const k of Object.keys(form)) pairs.push(encodeURIComponent(k) + '=' + encodeURIComponent(form[k] == null ? '' : String(form[k])))
     runOpts.stdin = pairs.join('&')
   }
-  const res = await runCurl(shell, server, args, runOpts)
+  const res = await runCurl(ctx, server, args, runOpts)
   if (res.exitCode !== 0 && res.exitCode !== null) {
     throw new Error('网络请求失败：' + ((res.stderr || '').trim() || `curl 退出码 ${res.exitCode}`))
   }
@@ -117,8 +138,8 @@ async function jenkinsRequest(shell, server, path, opts) {
   return { status: lastStatus(parsed.headers), headers: parsed.headers, body: parsed.body }
 }
 
-async function jenkinsJson(shell, server, path, opts) {
-  const r = await jenkinsRequest(shell, server, path, opts)
+async function jenkinsJson(ctx, server, path, opts) {
+  const r = await jenkinsRequest(ctx, server, path, opts)
   if (r.status >= 400) {
     let msg = 'HTTP ' + r.status
     try {
@@ -136,9 +157,9 @@ async function jenkinsJson(shell, server, path, opts) {
   try { return JSON.parse(r.body) } catch (e) { throw new Error('响应解析失败：' + e.message) }
 }
 
-async function getCrumb(shell, server) {
+async function getCrumb(ctx, server) {
   try {
-    const r = await jenkinsRequest(shell, server, '/crumbIssuer/api/json')
+    const r = await jenkinsRequest(ctx, server, '/crumbIssuer/api/json')
     if (r.status >= 400) return null
     const j = JSON.parse(r.body || '{}')
     if (j && j.crumb) return { field: j.crumbRequestField || 'Jenkins-Crumb', value: j.crumb }
@@ -319,13 +340,16 @@ export function apply(ctx, config) {
 
     if (op === 'workspaceConfig') {
       const cwd = String(req.cwd || '').trim()
+      console.log('[dsh-jenkins-cli] workspaceConfig cwd=', cwd)
       if (!cwd) return { ok: false, code: 'cwd-missing', error: '缺少工作区路径' }
       try {
         const config = await loadWorkspaceConfig(cwd)
+        console.log('[dsh-jenkins-cli] workspaceConfig found=', config !== null, config && config.file)
         return config === null
           ? { ok: true, found: false, config: null }
           : { ok: true, found: true, config }
       } catch (e) {
+        console.error('[dsh-jenkins-cli] workspaceConfig error', e)
         return { ok: false, code: errCodeOf(e), error: (e && e.message) || String(e) }
       }
     }
@@ -341,7 +365,9 @@ export function apply(ctx, config) {
         if (!env) {
           return { ok: false, code: 'env-missing', envName, available: config.environments.map((e) => e.name), error: '环境不存在：' + envName + '（可用：' + config.environments.map((e) => e.name).join('、') + '）' }
         }
-        let server = config.server ? findServer(config.server) : undefined
+        // 服务器解析顺序：弹框选择的 serverId → 配置的 server 名称 → 唯一服务器。
+        let server = req.serverId ? findServer(req.serverId) : undefined
+        if (server === undefined && config.server) server = findServer(config.server)
         if (server === undefined) {
           const all = readServers()
           if (all.length === 1) server = all[0]
@@ -349,8 +375,13 @@ export function apply(ctx, config) {
         if (server === undefined) {
           return { ok: false, code: 'server-missing', error: '找不到服务器「' + (config.server || '（未配置）') + '」，请先在 设置 → Jenkins 配置服务器' }
         }
-        const segs = config.job.split('/').filter(Boolean)
-        const result = await runOp({ op: 'trigger', serverId: server.id, segments: segs, parameters: env.parameters })
+        const segs = (req.job && String(req.job).trim() ? String(req.job).trim() : config.job).split('/').filter(Boolean)
+        if (segs.length === 0) return { ok: false, code: 'job-path-invalid', error: '任务路径为空' }
+        // 表单参数覆盖：弹框提交的已选参数优先；否则用配置文件里的环境参数。
+        const parameters = (req.parameters && typeof req.parameters === 'object' && Object.keys(req.parameters).length > 0)
+          ? req.parameters
+          : env.parameters
+        const result = await runOp({ op: 'trigger', serverId: server.id, segments: segs, parameters })
         if (!result.ok) return result
         let nextBuildNumber = null
         if (result.queueId == null) {
@@ -418,7 +449,7 @@ export function apply(ctx, config) {
       if (!baseUrl || !token) return { ok: false, code: 'fields-missing', error: '请填写服务器地址和 Token' }
       const insecure = a.insecure !== undefined ? !!a.insecure : (stored ? !!stored.insecure : false)
       const server = { baseUrl, username: username || 'admin', token, insecure }
-      const r = await jenkinsRequest(shell, server, '/api/json')
+      const r = await jenkinsRequest(ctx, server, '/api/json')
       if (r.status === 401) return { ok: false, code: 'auth-failed', error: '认证失败：用户名或 Token 不正确（HTTP 401）' }
       if (r.status === 403) return { ok: false, code: 'forbidden', error: '权限不足（HTTP 403）' }
       if (r.status >= 400) return { ok: false, code: 'connect-failed', error: '连接失败（HTTP ' + r.status + '）' }
@@ -431,7 +462,7 @@ export function apply(ctx, config) {
       const s = findServer(req.serverId)
       if (!s) return { ok: false, code: 'server-missing', error: '服务器不存在，请先在设置中配置' }
       const tree = 'jobs[name,color,url,buildable,jobs[name,color,url,buildable,jobs[name,color,url,buildable]]]'
-      const data = await jenkinsJson(shell, s, '/api/json?tree=' + encodeURIComponent(tree))
+      const data = await jenkinsJson(ctx, s, '/api/json?tree=' + encodeURIComponent(tree))
       const jobs = []
       const walk = (list, prefix, depth) => {
         for (const j of list || []) {
@@ -455,7 +486,7 @@ export function apply(ctx, config) {
       if (!s) return { ok: false, code: 'server-missing', error: '服务器不存在' }
       const segs = jobSegments(req.jobUrl)
       if (segs.length === 0) return { ok: false, code: 'job-path-invalid', error: '无法解析任务路径' }
-      const data = await jenkinsJson(shell, s, jobPath(segs) + '/api/json')
+      const data = await jenkinsJson(ctx, s, jobPath(segs) + '/api/json')
       return {
         ok: true,
         name: data.name || '',
@@ -476,11 +507,11 @@ export function apply(ctx, config) {
       if (segs.length === 0) return { ok: false, code: 'job-path-invalid', error: '无法解析任务路径' }
       const params = req.parameters && typeof req.parameters === 'object' ? req.parameters : {}
       const hasParams = Object.keys(params).length > 0
-      const crumb = await getCrumb(shell, s)
+      const crumb = await getCrumb(ctx, s)
       const headers = {}
       if (crumb) headers[crumb.field] = crumb.value
       const path = jobPath(segs) + (hasParams ? '/buildWithParameters' : '/build')
-      const res = await jenkinsRequest(shell, s, path, { method: 'POST', form: hasParams ? params : null, headers })
+      const res = await jenkinsRequest(ctx, s, path, { method: 'POST', form: hasParams ? params : null, headers })
       if (res.status >= 300 && res.status < 400) {
         return { ok: false, code: 'redirect', error: '服务器返回重定向（HTTP ' + res.status + '），请检查服务器地址是否为最终地址（如 https://…）' }
       }
@@ -498,7 +529,7 @@ export function apply(ctx, config) {
       if (!s) return { ok: false, code: 'server-missing', error: '服务器不存在' }
       const id = Number(req.queueId)
       if (!id) return { ok: false, code: 'queue-id-missing', error: '缺少队列 ID' }
-      const data = await jenkinsJson(shell, s, '/queue/item/' + id + '/api/json')
+      const data = await jenkinsJson(ctx, s, '/queue/item/' + id + '/api/json')
       const ex = data.executable
       if (ex && ex.number) return { ok: true, state: 'started', buildNumber: ex.number, buildUrl: ex.url || '', why: data.why || '' }
       if (data.cancelled) return { ok: true, state: 'cancelled', why: data.why || '已取消' }
@@ -513,7 +544,7 @@ export function apply(ctx, config) {
       const num = Number(req.buildNumber)
       const path = jobPath(segs) + (num ? '/' + num : '/lastBuild') + '/api/json'
       try {
-        const data = await jenkinsJson(shell, s, path)
+        const data = await jenkinsJson(ctx, s, path)
         return {
           ok: true,
           number: data.number || null,

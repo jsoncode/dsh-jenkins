@@ -1,4 +1,4 @@
-﻿# dsh-jenkins-cli
+# dsh-jenkins-cli
 
 A DeepSeek Harness plugin (dual-face: host + browser) for managing multiple Jenkins
 servers and triggering jobs — from a Settings page, from model tools, and from a
@@ -12,11 +12,17 @@ npm / GitHub. UI copy is bilingual (Chinese / English, following the host UI lan
 - **Settings → Jenkins Cli Config** page (`settings.section`): add / edit / delete
   multiple servers (URL, username, Token), test connections, skip TLS verification.
   Only **Server URL** and **Token** are required (username defaults to `admin`).
-- **Workspace entry** (`sidebar.footer.action`): a footer button appears when the
-  current workspace root contains a `dsh-jenkins-cli.{json,js,ts}` config file; it opens
-  the **Run Jenkins Job** modal with **environment tabs** (dev / uat / prod …), a
-  parameter form pre-filled from the config, build triggering, and status polling
-  (queued → building → result, with a 10-minute timeout).
+- **Workspace entry** (`sidebar.footer.action`): a footer group with the **Jenkins
+  logo button** (opens the Run Jenkins Job modal) and a **History button** (clock
+  icon, publish history of the last 50 runs across all workspaces, filterable by
+  workspace — defaults to All) appears when the current workspace root contains a
+  `dsh-jenkins-cli.{json,js,ts}` config file.
+  The modal has **searchable dropdowns** for server / job / environment
+  (dev / uat / prod …), a parameter form pre-filled from the config, build
+  triggering, and status polling (queued → building → result, with a 10-minute
+  timeout). The last submitted **server / job / environment / parameters** are
+  remembered per workspace and auto-echoed the next time the modal opens
+  (browser `localStorage`).
 - **Model tools** (docs/develop/basic/tool): `dsh_jenkins_build`, `dsh_jenkins_status`.
 - **Config** (docs/develop/basic/config): Schemastery `Config` + a settings namespace
   that persists UI edits to `$DSH_HOME/settings.yaml` (server list stored as JSON text
@@ -27,7 +33,7 @@ npm / GitHub. UI copy is bilingual (Chinese / English, following the host UI lan
 
 ```
 ├── index.js            # Host half: Config, settings namespace, dsh-jenkins-cli command, model tools, workspace-config ops
-├── client.js           # Browser half (__ModuleLoader__ bundle): Settings page, footer entry, env-tab modal
+├── client.js           # Browser half (__ModuleLoader__ bundle): Settings page, footer entry, run-job modal (searchable combos, last-params echo)
 ├── index.d.ts          # Host type declarations
 ├── cordis.patch.yml    # Bundle patch: plugin row referenced by package name (no paths)
 ├── package.json        # dsh.bundle + dsh.client(web) manifests + peerDependencies
