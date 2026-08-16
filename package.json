@@ -1,7 +1,7 @@
 {
   "name": "dsh-jenkins-cli",
-  "version": "0.1.3",
-  "description": "Jenkins CLI 插件（双面）：设置页管理多 Jenkins 服务器与 Token，模型工具触发构建/查询状态。无硬编码路径，可发布到 npm / GitHub",
+  "version": "0.1.4",
+  "description": "Jenkins CLI plugin (dual-face): multi-server config page, model tools, and a per-workspace Run-Jenkins-Job entry with environment tabs. Bilingual UI (zh/en), no hardcoded paths, publishable to npm / GitHub",
   "type": "module",
   "main": "index.js",
   "types": "index.d.ts",
@@ -19,7 +19,8 @@
     "client.js",
     "index.d.ts",
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "README.zh.md"
   ],
   "dsh": {
     "bundle": {

@@ -35,9 +35,9 @@ export const Config = Schema.object({
   servers: Schema.array(ServerSchema).default([]),
 })
 
-/** 运行时 settings namespace：UI 编辑的服务器写到这里（持久化到 $DSH_HOME/settings.yaml）。 */
+/** 运行时 settings namespace：服务器列表以 JSON 字符串持久化到 $DSH_HOME/settings.yaml。 */
 const JenkinsSettingsSchema = Schema.object({
-  servers: Schema.array(ServerSchema).default([]),
+  serversJson: Schema.string().default('[]'),
 })
 
 /* ── Jenkins REST 调用核心（curl.exe，经宿主 shell 服务执行）───── */
@@ -75,7 +75,7 @@ async function runCurl(shell, server, args, opts) {
   const curlArgs = server.insecure ? ['-k'] : []
   const parts = [
     "$ErrorActionPreference='Stop';",
-    'curl.exe -sS -m 40 -u ' + psQuote(server.username + ':' + server.token),
+    'curl.exe -sS -m 40 -u ' + psQuote((server.username || 'admin') + ':' + server.token),
   ]
   for (const a of [...curlArgs, ...args]) parts.push(a)
   const request = {
@@ -190,23 +190,31 @@ export function apply(ctx, config) {
   const settings = ctx.get('settings')
   const commands = ctx.get('commands')
 
-  // settings namespace：base = cordis.yml 的 servers；用户层可编辑并持久化。
+  // settings namespace：服务器列表以 JSON 字符串存储（规避 settings 对数组
+  // 的深冻结 + schemastery 校验原地改写导致的 "object is not extensible"）。
   let scope = null
   if (settings !== undefined) {
     scope = settings.register(settingsNamespace('dsh-jenkins-cli'), JenkinsSettingsSchema, {
-      base: { servers: config.servers },
+      base: { serversJson: JSON.stringify(config.servers || []) },
     })
   }
   const readServers = () => {
+    let raw = '[]'
     if (scope !== null) {
       const value = scope.get()
-      const servers = value && value.servers
-      if (Array.isArray(servers)) return servers
+      if (value && typeof value.serversJson === 'string') raw = value.serversJson
+    } else {
+      raw = JSON.stringify(config.servers || [])
     }
-    return config.servers
+    try {
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
   }
   const writeServers = async (servers) => {
-    if (scope !== null) await scope.update({ servers })
+    if (scope !== null) await scope.update({ serversJson: JSON.stringify(servers) })
   }
 
   const findServer = (nameOrId) => readServers().find((s) => s.name === nameOrId || s.id === nameOrId)
@@ -292,38 +300,54 @@ export function apply(ctx, config) {
     return { ...config, file: found.name }
   }
 
+  /** 把异常/消息映射为本地化错误码（客户端按 code 显示中/英文）。 */
+  function errCodeOf(e) {
+    if (e && e.status === 401) return 'auth-failed'
+    if (e && e.status === 403) return 'forbidden'
+    if (e && e.status === 404) return 'not-found'
+    const msg = (e && e.message) || String(e)
+    if (msg.indexOf('网络请求失败') !== -1) return 'network-failed'
+    if (msg.indexOf('无法解析任务路径') !== -1) return 'job-path-invalid'
+    if (msg.indexOf('缺少队列 ID') !== -1) return 'queue-id-missing'
+    if (msg.indexOf('缺少工作区路径') !== -1) return 'cwd-missing'
+    if (msg.indexOf('响应解析失败') !== -1) return 'parse-failed'
+    return undefined
+  }
+
   async function runOp(req) {
     const op = req && req.op
 
     if (op === 'workspaceConfig') {
       const cwd = String(req.cwd || '').trim()
-      if (!cwd) return { ok: false, error: '缺少工作区路径' }
+      if (!cwd) return { ok: false, code: 'cwd-missing', error: '缺少工作区路径' }
       try {
         const config = await loadWorkspaceConfig(cwd)
         return config === null
           ? { ok: true, found: false, config: null }
           : { ok: true, found: true, config }
       } catch (e) {
-        return { ok: false, error: (e && e.message) || String(e) }
+        return { ok: false, code: errCodeOf(e), error: (e && e.message) || String(e) }
       }
     }
 
     if (op === 'workspaceTrigger') {
       const cwd = String(req.cwd || '').trim()
       const envName = String(req.env || '').trim()
-      if (!cwd) return { ok: false, error: '缺少工作区路径' }
+      if (!cwd) return { ok: false, code: 'cwd-missing', error: '缺少工作区路径' }
       try {
         const config = await loadWorkspaceConfig(cwd)
-        if (config === null) return { ok: false, error: '工作区根目录未找到 dsh-jenkins-cli.json/js/ts 配置' }
+        if (config === null) return { ok: false, code: 'no-config', error: '工作区根目录未找到 dsh-jenkins-cli.json/js/ts 配置' }
         const env = config.environments.find((e) => e.name === envName)
-        if (!env) return { ok: false, error: '环境不存在：' + envName + '（可用：' + config.environments.map((e) => e.name).join('、') + '）' }
+        if (!env) {
+          return { ok: false, code: 'env-missing', envName, available: config.environments.map((e) => e.name), error: '环境不存在：' + envName + '（可用：' + config.environments.map((e) => e.name).join('、') + '）' }
+        }
         let server = config.server ? findServer(config.server) : undefined
         if (server === undefined) {
           const all = readServers()
           if (all.length === 1) server = all[0]
         }
         if (server === undefined) {
-          return { ok: false, error: '找不到服务器「' + (config.server || '（未配置）') + '」，请先在 设置 → Jenkins 配置服务器' }
+          return { ok: false, code: 'server-missing', error: '找不到服务器「' + (config.server || '（未配置）') + '」，请先在 设置 → Jenkins 配置服务器' }
         }
         const segs = config.job.split('/').filter(Boolean)
         const result = await runOp({ op: 'trigger', serverId: server.id, segments: segs, parameters: env.parameters })
@@ -337,7 +361,7 @@ export function apply(ctx, config) {
         }
         return { ok: true, queueId: result.queueId, location: result.location, serverId: server.id, segments: segs, nextBuildNumber }
       } catch (e) {
-        return { ok: false, error: (e && e.message) || String(e) }
+        return { ok: false, code: errCodeOf(e), error: (e && e.message) || String(e) }
       }
     }
 
@@ -347,24 +371,24 @@ export function apply(ctx, config) {
 
     if (op === 'save') {
       const a = (req && req.server) || {}
-      const name = String(a.name || '').trim()
       const baseUrl = normalizeBase(a.baseUrl)
       const username = String(a.username || '').trim()
       const token = String(a.token || '').trim()
-      if (!name) return { ok: false, error: '请填写服务器名称' }
-      if (!/^https?:\/\//i.test(baseUrl)) return { ok: false, error: '服务器地址需以 http:// 或 https:// 开头' }
-      if (!username) return { ok: false, error: '请填写用户名' }
+      if (!/^https?:\/\//i.test(baseUrl)) return { ok: false, code: 'url-invalid', error: '服务器地址需以 http:// 或 https:// 开头' }
+      if (!token) return { ok: false, code: 'token-required', error: '请填写 Token' }
+      // 名称选填（缺省用地址主机名），用户名选填（缺省 admin）。
+      const name = String(a.name || '').trim() || (baseUrl.replace(/^https?:\/\//i, '').split('/')[0] || baseUrl)
+      // readServers 返回 JSON.parse 结果（可变），可安全增改。
       const servers = readServers()
       if (a.id) {
         const s = servers.find((x) => x.id === a.id)
-        if (!s) return { ok: false, error: '服务器不存在' }
+        if (!s) return { ok: false, code: 'server-missing', error: '服务器不存在' }
         s.name = name
         s.baseUrl = baseUrl
         s.username = username
         s.insecure = !!a.insecure
         if (token) s.token = token
       } else {
-        if (!token) return { ok: false, error: '请填写 Token' }
         servers.push({
           id: 'srv-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
           name, baseUrl, username, token, insecure: !!a.insecure,
@@ -391,13 +415,13 @@ export function apply(ctx, config) {
         if (!username) username = stored.username
         if (!token) token = stored.token
       }
-      if (!baseUrl || !username || !token) return { ok: false, error: '请完整填写服务器地址、用户名和 Token' }
+      if (!baseUrl || !token) return { ok: false, code: 'fields-missing', error: '请填写服务器地址和 Token' }
       const insecure = a.insecure !== undefined ? !!a.insecure : (stored ? !!stored.insecure : false)
-      const server = { baseUrl, username, token, insecure }
+      const server = { baseUrl, username: username || 'admin', token, insecure }
       const r = await jenkinsRequest(shell, server, '/api/json')
-      if (r.status === 401) return { ok: false, error: '认证失败：用户名或 Token 不正确（HTTP 401）' }
-      if (r.status === 403) return { ok: false, error: '权限不足（HTTP 403）' }
-      if (r.status >= 400) return { ok: false, error: '连接失败（HTTP ' + r.status + '）' }
+      if (r.status === 401) return { ok: false, code: 'auth-failed', error: '认证失败：用户名或 Token 不正确（HTTP 401）' }
+      if (r.status === 403) return { ok: false, code: 'forbidden', error: '权限不足（HTTP 403）' }
+      if (r.status >= 400) return { ok: false, code: 'connect-failed', error: '连接失败（HTTP ' + r.status + '）' }
       let data = null
       try { data = JSON.parse(r.body || '{}') } catch { /* ignore */ }
       return { ok: true, version: data && data.version ? data.version : '', nodeName: data && data.nodeName ? data.nodeName : '' }
@@ -405,7 +429,7 @@ export function apply(ctx, config) {
 
     if (op === 'jobs') {
       const s = findServer(req.serverId)
-      if (!s) return { ok: false, error: '服务器不存在，请先在设置中配置' }
+      if (!s) return { ok: false, code: 'server-missing', error: '服务器不存在，请先在设置中配置' }
       const tree = 'jobs[name,color,url,buildable,jobs[name,color,url,buildable,jobs[name,color,url,buildable]]]'
       const data = await jenkinsJson(shell, s, '/api/json?tree=' + encodeURIComponent(tree))
       const jobs = []
@@ -428,9 +452,9 @@ export function apply(ctx, config) {
 
     if (op === 'jobDetail') {
       const s = findServer(req.serverId)
-      if (!s) return { ok: false, error: '服务器不存在' }
+      if (!s) return { ok: false, code: 'server-missing', error: '服务器不存在' }
       const segs = jobSegments(req.jobUrl)
-      if (segs.length === 0) return { ok: false, error: '无法解析任务路径' }
+      if (segs.length === 0) return { ok: false, code: 'job-path-invalid', error: '无法解析任务路径' }
       const data = await jenkinsJson(shell, s, jobPath(segs) + '/api/json')
       return {
         ok: true,
@@ -447,9 +471,9 @@ export function apply(ctx, config) {
 
     if (op === 'trigger') {
       const s = findServer(req.serverId)
-      if (!s) return { ok: false, error: '服务器不存在' }
+      if (!s) return { ok: false, code: 'server-missing', error: '服务器不存在' }
       const segs = Array.isArray(req.segments) && req.segments.length ? req.segments : jobSegments(req.jobUrl)
-      if (segs.length === 0) return { ok: false, error: '无法解析任务路径' }
+      if (segs.length === 0) return { ok: false, code: 'job-path-invalid', error: '无法解析任务路径' }
       const params = req.parameters && typeof req.parameters === 'object' ? req.parameters : {}
       const hasParams = Object.keys(params).length > 0
       const crumb = await getCrumb(shell, s)
@@ -458,11 +482,11 @@ export function apply(ctx, config) {
       const path = jobPath(segs) + (hasParams ? '/buildWithParameters' : '/build')
       const res = await jenkinsRequest(shell, s, path, { method: 'POST', form: hasParams ? params : null, headers })
       if (res.status >= 300 && res.status < 400) {
-        return { ok: false, error: '服务器返回重定向（HTTP ' + res.status + '），请检查服务器地址是否为最终地址（如 https://…）' }
+        return { ok: false, code: 'redirect', error: '服务器返回重定向（HTTP ' + res.status + '），请检查服务器地址是否为最终地址（如 https://…）' }
       }
       if (res.status >= 400) {
         const detail = (res.body || '').trim().slice(0, 300)
-        return { ok: false, error: '触发构建失败（HTTP ' + res.status + '）：' + (detail || '无响应内容') }
+        return { ok: false, code: 'trigger-http', status: res.status, detail, error: '触发构建失败（HTTP ' + res.status + '）：' + (detail || '无响应内容') }
       }
       const loc = headerValue(res.headers, 'Location')
       const qm = loc ? String(loc).match(/\/queue\/item\/(\d+)/) : null
@@ -471,9 +495,9 @@ export function apply(ctx, config) {
 
     if (op === 'queueStatus') {
       const s = findServer(req.serverId)
-      if (!s) return { ok: false, error: '服务器不存在' }
+      if (!s) return { ok: false, code: 'server-missing', error: '服务器不存在' }
       const id = Number(req.queueId)
-      if (!id) return { ok: false, error: '缺少队列 ID' }
+      if (!id) return { ok: false, code: 'queue-id-missing', error: '缺少队列 ID' }
       const data = await jenkinsJson(shell, s, '/queue/item/' + id + '/api/json')
       const ex = data.executable
       if (ex && ex.number) return { ok: true, state: 'started', buildNumber: ex.number, buildUrl: ex.url || '', why: data.why || '' }
@@ -483,9 +507,9 @@ export function apply(ctx, config) {
 
     if (op === 'buildStatus') {
       const s = findServer(req.serverId)
-      if (!s) return { ok: false, error: '服务器不存在' }
+      if (!s) return { ok: false, code: 'server-missing', error: '服务器不存在' }
       const segs = Array.isArray(req.segments) && req.segments.length ? req.segments : jobSegments(req.jobUrl)
-      if (segs.length === 0) return { ok: false, error: '无法解析任务路径' }
+      if (segs.length === 0) return { ok: false, code: 'job-path-invalid', error: '无法解析任务路径' }
       const num = Number(req.buildNumber)
       const path = jobPath(segs) + (num ? '/' + num : '/lastBuild') + '/api/json'
       try {
@@ -515,8 +539,8 @@ export function apply(ctx, config) {
   if (commands !== undefined) {
     commands.register({
       name: 'dsh-jenkins-cli',
-      description: 'Jenkins CLI：管理服务器配置并触发/查询构建（设置界面调用）。参数为 JSON：'
-        + '{ "op": "list|save|delete|test|jobs|jobDetail|trigger|queueStatus|buildStatus", ... }。',
+      description: 'Jenkins CLI：管理服务器配置并触发/查询构建（设置界面/工作区入口调用）。Manage Jenkins servers and trigger/query builds (used by the settings UI and workspace entry). 参数为 JSON：'
+        + '{ "op": "list|save|delete|test|jobs|jobDetail|trigger|queueStatus|buildStatus|workspaceConfig|workspaceTrigger", ... }。',
       input: { hint: '{"op":"list"}' },
       recordInput: true,
       handler: async (invocation) => {
@@ -531,7 +555,7 @@ export function apply(ctx, config) {
           const payload = await runOp(req)
           return { kind: 'success', text: JSON.stringify(payload) }
         } catch (e) {
-          return { kind: 'error', text: JSON.stringify({ ok: false, error: (e && e.message) || String(e) }) }
+          return { kind: 'error', text: JSON.stringify({ ok: false, code: errCodeOf(e), error: (e && e.message) || String(e) }) }
         }
       },
     })
@@ -541,11 +565,11 @@ export function apply(ctx, config) {
 
   ctx.tools.register(defineTool({
     name: 'dsh_jenkins_build',
-    description: '根据配置的 Jenkins 服务器触发一个 Job 构建（可选参数），返回队列号/构建号与状态。',
+    description: '根据配置的 Jenkins 服务器触发一个 Job 构建（可选参数），返回队列号/构建号与状态。Trigger a Jenkins job build with optional parameters (config-driven servers); returns queue/build info.',
     parameters: {
-      server: { type: 'string', required: true, description: '服务器名称（对应配置中的 name）' },
-      job: { type: 'string', required: true, description: '任务路径，如 build-app 或 folder/build-app' },
-      parameters: { type: 'json', description: '可选参数键值对，如 {"BRANCH": "main"}' },
+      server: { type: 'string', required: true, description: '服务器名称（对应配置中的 name）/ Server name (as configured)' },
+      job: { type: 'string', required: true, description: '任务路径，如 build-app 或 folder/build-app / Job path, e.g. build-app or folder/build-app' },
+      parameters: { type: 'json', description: '可选参数键值对，如 {"BRANCH": "main"} / Optional key-value parameters' },
     },
     output: {
       schema: { type: 'string' },
@@ -566,11 +590,11 @@ export function apply(ctx, config) {
 
   ctx.tools.register(defineTool({
     name: 'dsh_jenkins_status',
-    description: '查询 Jenkins Job 最近一次或指定编号构建的状态与结果。',
+    description: '查询 Jenkins Job 最近一次或指定编号构建的状态与结果。Query the latest (or a specific) build status/result of a Jenkins job.',
     parameters: {
-      server: { type: 'string', required: true, description: '服务器名称（对应配置中的 name）' },
-      job: { type: 'string', required: true, description: '任务路径，如 build-app 或 folder/build-app' },
-      buildNumber: { type: 'number', description: '可选：构建编号，缺省查询最近一次构建' },
+      server: { type: 'string', required: true, description: '服务器名称（对应配置中的 name）/ Server name (as configured)' },
+      job: { type: 'string', required: true, description: '任务路径，如 build-app 或 folder/build-app / Job path, e.g. build-app or folder/build-app' },
+      buildNumber: { type: 'number', description: '可选：构建编号，缺省查询最近一次构建 / Optional build number; defaults to the latest build' },
     },
     output: {
       schema: { type: 'string' },
