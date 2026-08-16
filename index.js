@@ -341,7 +341,7 @@ export function apply(ctx, config) {
     if (op === 'workspaceConfig') {
       const cwd = String(req.cwd || '').trim()
       console.log('[dsh-jenkins-cli] workspaceConfig cwd=', cwd)
-      if (!cwd) return { ok: false, code: 'cwd-missing', error: '缺少工作区路径' }
+      if (!cwd) return { ok: false, code: 'cwd-missing', error: 'Missing workspace path' }
       try {
         const config = await loadWorkspaceConfig(cwd)
         console.log('[dsh-jenkins-cli] workspaceConfig found=', config !== null, config && config.file)
@@ -357,13 +357,13 @@ export function apply(ctx, config) {
     if (op === 'workspaceTrigger') {
       const cwd = String(req.cwd || '').trim()
       const envName = String(req.env || '').trim()
-      if (!cwd) return { ok: false, code: 'cwd-missing', error: '缺少工作区路径' }
+      if (!cwd) return { ok: false, code: 'cwd-missing', error: 'Missing workspace path' }
       try {
         const config = await loadWorkspaceConfig(cwd)
-        if (config === null) return { ok: false, code: 'no-config', error: '工作区根目录未找到 dsh-jenkins-cli.json/js/ts 配置' }
+        if (config === null) return { ok: false, code: 'no-config', error: 'No dsh-jenkins-cli.json/js/ts config found in workspace root' }
         const env = config.environments.find((e) => e.name === envName)
         if (!env) {
-          return { ok: false, code: 'env-missing', envName, available: config.environments.map((e) => e.name), error: '环境不存在：' + envName + '（可用：' + config.environments.map((e) => e.name).join('、') + '）' }
+          return { ok: false, code: 'env-missing', envName, available: config.environments.map((e) => e.name), error: 'Environment not found: ' + envName + ' (available: ' + config.environments.map((e) => e.name).join(', ') + ')' }
         }
         // 服务器解析顺序：弹框选择的 serverId → 配置的 server 名称 → 唯一服务器。
         let server = req.serverId ? findServer(req.serverId) : undefined
@@ -373,10 +373,10 @@ export function apply(ctx, config) {
           if (all.length === 1) server = all[0]
         }
         if (server === undefined) {
-          return { ok: false, code: 'server-missing', error: '找不到服务器「' + (config.server || '（未配置）') + '」，请先在 设置 → Jenkins 配置服务器' }
+          return { ok: false, code: 'server-missing', error: 'Server "' + (config.server || '(not configured)') + '" not found; configure it in Settings → Jenkins first' }
         }
         const segs = (req.job && String(req.job).trim() ? String(req.job).trim() : config.job).split('/').filter(Boolean)
-        if (segs.length === 0) return { ok: false, code: 'job-path-invalid', error: '任务路径为空' }
+        if (segs.length === 0) return { ok: false, code: 'job-path-invalid', error: 'Empty job path' }
         // 表单参数覆盖：弹框提交的已选参数优先；否则用配置文件里的环境参数。
         const parameters = (req.parameters && typeof req.parameters === 'object' && Object.keys(req.parameters).length > 0)
           ? req.parameters
@@ -405,15 +405,15 @@ export function apply(ctx, config) {
       const baseUrl = normalizeBase(a.baseUrl)
       const username = String(a.username || '').trim()
       const token = String(a.token || '').trim()
-      if (!/^https?:\/\//i.test(baseUrl)) return { ok: false, code: 'url-invalid', error: '服务器地址需以 http:// 或 https:// 开头' }
-      if (!token) return { ok: false, code: 'token-required', error: '请填写 Token' }
+      if (!/^https?:\/\//i.test(baseUrl)) return { ok: false, code: 'url-invalid', error: 'Server URL must start with http:// or https://' }
+      if (!token) return { ok: false, code: 'token-required', error: 'Token is required' }
       // 名称选填（缺省用地址主机名），用户名选填（缺省 admin）。
       const name = String(a.name || '').trim() || (baseUrl.replace(/^https?:\/\//i, '').split('/')[0] || baseUrl)
       // readServers 返回 JSON.parse 结果（可变），可安全增改。
       const servers = readServers()
       if (a.id) {
         const s = servers.find((x) => x.id === a.id)
-        if (!s) return { ok: false, code: 'server-missing', error: '服务器不存在' }
+        if (!s) return { ok: false, code: 'server-missing', error: 'Server not found' }
         s.name = name
         s.baseUrl = baseUrl
         s.username = username
@@ -446,13 +446,13 @@ export function apply(ctx, config) {
         if (!username) username = stored.username
         if (!token) token = stored.token
       }
-      if (!baseUrl || !token) return { ok: false, code: 'fields-missing', error: '请填写服务器地址和 Token' }
+      if (!baseUrl || !token) return { ok: false, code: 'fields-missing', error: 'Server URL and Token are required' }
       const insecure = a.insecure !== undefined ? !!a.insecure : (stored ? !!stored.insecure : false)
       const server = { baseUrl, username: username || 'admin', token, insecure }
       const r = await jenkinsRequest(ctx, server, '/api/json')
-      if (r.status === 401) return { ok: false, code: 'auth-failed', error: '认证失败：用户名或 Token 不正确（HTTP 401）' }
-      if (r.status === 403) return { ok: false, code: 'forbidden', error: '权限不足（HTTP 403）' }
-      if (r.status >= 400) return { ok: false, code: 'connect-failed', error: '连接失败（HTTP ' + r.status + '）' }
+      if (r.status === 401) return { ok: false, code: 'auth-failed', error: 'Authentication failed: wrong username or Token (HTTP 401)' }
+      if (r.status === 403) return { ok: false, code: 'forbidden', error: 'Permission denied (HTTP 403)' }
+      if (r.status >= 400) return { ok: false, code: 'connect-failed', error: 'Connection failed (HTTP ' + r.status + ')' }
       let data = null
       try { data = JSON.parse(r.body || '{}') } catch { /* ignore */ }
       return { ok: true, version: data && data.version ? data.version : '', nodeName: data && data.nodeName ? data.nodeName : '' }
@@ -460,7 +460,7 @@ export function apply(ctx, config) {
 
     if (op === 'jobs') {
       const s = findServer(req.serverId)
-      if (!s) return { ok: false, code: 'server-missing', error: '服务器不存在，请先在设置中配置' }
+      if (!s) return { ok: false, code: 'server-missing', error: 'Server not found; configure it in settings first' }
       const tree = 'jobs[name,color,url,buildable,jobs[name,color,url,buildable,jobs[name,color,url,buildable]]]'
       const data = await jenkinsJson(ctx, s, '/api/json?tree=' + encodeURIComponent(tree))
       const jobs = []
@@ -483,9 +483,9 @@ export function apply(ctx, config) {
 
     if (op === 'jobDetail') {
       const s = findServer(req.serverId)
-      if (!s) return { ok: false, code: 'server-missing', error: '服务器不存在' }
+      if (!s) return { ok: false, code: 'server-missing', error: 'Server not found' }
       const segs = jobSegments(req.jobUrl)
-      if (segs.length === 0) return { ok: false, code: 'job-path-invalid', error: '无法解析任务路径' }
+      if (segs.length === 0) return { ok: false, code: 'job-path-invalid', error: 'Unable to parse job path' }
       const data = await jenkinsJson(ctx, s, jobPath(segs) + '/api/json')
       return {
         ok: true,
@@ -502,9 +502,9 @@ export function apply(ctx, config) {
 
     if (op === 'trigger') {
       const s = findServer(req.serverId)
-      if (!s) return { ok: false, code: 'server-missing', error: '服务器不存在' }
+      if (!s) return { ok: false, code: 'server-missing', error: 'Server not found' }
       const segs = Array.isArray(req.segments) && req.segments.length ? req.segments : jobSegments(req.jobUrl)
-      if (segs.length === 0) return { ok: false, code: 'job-path-invalid', error: '无法解析任务路径' }
+      if (segs.length === 0) return { ok: false, code: 'job-path-invalid', error: 'Unable to parse job path' }
       const params = req.parameters && typeof req.parameters === 'object' ? req.parameters : {}
       const hasParams = Object.keys(params).length > 0
       const crumb = await getCrumb(ctx, s)
@@ -513,11 +513,11 @@ export function apply(ctx, config) {
       const path = jobPath(segs) + (hasParams ? '/buildWithParameters' : '/build')
       const res = await jenkinsRequest(ctx, s, path, { method: 'POST', form: hasParams ? params : null, headers })
       if (res.status >= 300 && res.status < 400) {
-        return { ok: false, code: 'redirect', error: '服务器返回重定向（HTTP ' + res.status + '），请检查服务器地址是否为最终地址（如 https://…）' }
+        return { ok: false, code: 'redirect', error: 'Server returned a redirect (HTTP ' + res.status + '); check that the URL is the final one (e.g. https://…)' }
       }
       if (res.status >= 400) {
         const detail = (res.body || '').trim().slice(0, 300)
-        return { ok: false, code: 'trigger-http', status: res.status, detail, error: '触发构建失败（HTTP ' + res.status + '）：' + (detail || '无响应内容') }
+        return { ok: false, code: 'trigger-http', status: res.status, detail, error: 'Failed to trigger build (HTTP ' + res.status + '): ' + (detail || 'no response body') }
       }
       const loc = headerValue(res.headers, 'Location')
       const qm = loc ? String(loc).match(/\/queue\/item\/(\d+)/) : null
@@ -526,21 +526,21 @@ export function apply(ctx, config) {
 
     if (op === 'queueStatus') {
       const s = findServer(req.serverId)
-      if (!s) return { ok: false, code: 'server-missing', error: '服务器不存在' }
+      if (!s) return { ok: false, code: 'server-missing', error: 'Server not found' }
       const id = Number(req.queueId)
-      if (!id) return { ok: false, code: 'queue-id-missing', error: '缺少队列 ID' }
+      if (!id) return { ok: false, code: 'queue-id-missing', error: 'Missing queue ID' }
       const data = await jenkinsJson(ctx, s, '/queue/item/' + id + '/api/json')
       const ex = data.executable
       if (ex && ex.number) return { ok: true, state: 'started', buildNumber: ex.number, buildUrl: ex.url || '', why: data.why || '' }
-      if (data.cancelled) return { ok: true, state: 'cancelled', why: data.why || '已取消' }
+      if (data.cancelled) return { ok: true, state: 'cancelled', why: data.why || '' }
       return { ok: true, state: 'queued', why: data.why || '', blocked: !!data.blocked }
     }
 
     if (op === 'buildStatus') {
       const s = findServer(req.serverId)
-      if (!s) return { ok: false, code: 'server-missing', error: '服务器不存在' }
+      if (!s) return { ok: false, code: 'server-missing', error: 'Server not found' }
       const segs = Array.isArray(req.segments) && req.segments.length ? req.segments : jobSegments(req.jobUrl)
-      if (segs.length === 0) return { ok: false, code: 'job-path-invalid', error: '无法解析任务路径' }
+      if (segs.length === 0) return { ok: false, code: 'job-path-invalid', error: 'Unable to parse job path' }
       const num = Number(req.buildNumber)
       const path = jobPath(segs) + (num ? '/' + num : '/lastBuild') + '/api/json'
       try {
@@ -557,12 +557,12 @@ export function apply(ctx, config) {
           displayName: data.displayName || '',
         }
       } catch (e) {
-        if (e && e.status === 404) return { ok: false, error: '尚未找到构建记录', notFound: true }
+        if (e && e.status === 404) return { ok: false, code: 'build-not-found', error: 'No build record found yet', notFound: true }
         throw e
       }
     }
 
-    return { ok: false, error: '未知操作：' + String(op) }
+    return { ok: false, code: 'unknown-op', error: 'Unknown operation: ' + String(op) }
   }
 
   // ─── 命令入口（设置页经 ctx.remote.commands.execute 调用）───────
@@ -579,7 +579,7 @@ export function apply(ctx, config) {
         let req = {}
         if (raw.length > 0) {
           try { req = JSON.parse(raw) } catch {
-            return { kind: 'error', text: JSON.stringify({ ok: false, error: '参数需为 JSON' }) }
+            return { kind: 'error', text: JSON.stringify({ ok: false, code: 'params-invalid', error: 'Parameters must be JSON' }) }
           }
         }
         try {
@@ -609,13 +609,17 @@ export function apply(ctx, config) {
     async execute(args) {
       const server = findServer(args.server)
       if (!server) {
-        return '找不到服务器「' + args.server + '」。已配置：' + (readServers().map((s) => s.name).join('、') || '（无）')
+        const names = readServers().map((s) => s.name).join('、')
+        return '找不到服务器「' + args.server + '」。已配置：' + (names || '（无）')
+          + ' / Server "' + args.server + '" not found. Configured: ' + (names || '(none)')
       }
       const result = await runOp({ op: 'trigger', serverId: server.id, segments: args.job.split('/').filter(Boolean), parameters: args.parameters || {} })
-      if (!result.ok) return '触发失败：' + result.error
+      if (!result.ok) return '触发失败：' + result.error + ' / Trigger failed: ' + result.error
       return result.queueId
         ? `已触发构建：${args.job}（服务器 ${server.name}），队列 #${result.queueId}。可用 dsh_jenkins_status 查询状态。`
+          + ` / Build triggered: ${args.job} (server ${server.name}), queue #${result.queueId}. Use dsh_jenkins_status to check status.`
         : `已触发构建：${args.job}（服务器 ${server.name}），未获得队列编号。可用 dsh_jenkins_status 查询状态。`
+          + ` / Build triggered: ${args.job} (server ${server.name}), no queue number returned. Use dsh_jenkins_status to check status.`
     },
   }))
 
@@ -634,7 +638,9 @@ export function apply(ctx, config) {
     async execute(args) {
       const server = findServer(args.server)
       if (!server) {
-        return '找不到服务器「' + args.server + '」。已配置：' + (readServers().map((s) => s.name).join('、') || '（无）')
+        const names = readServers().map((s) => s.name).join('、')
+        return '找不到服务器「' + args.server + '」。已配置：' + (names || '（无）')
+          + ' / Server "' + args.server + '" not found. Configured: ' + (names || '(none)')
       }
       const result = await runOp({
         op: 'buildStatus',
@@ -643,11 +649,14 @@ export function apply(ctx, config) {
         buildNumber: args.buildNumber,
       })
       if (!result.ok) {
-        if (result.notFound) return `任务 ${args.job} 尚未有构建记录`
-        return '查询失败：' + result.error
+        if (result.notFound) return `任务 ${args.job} 尚未有构建记录 / Job ${args.job} has no build record yet`
+        return '查询失败：' + result.error + ' / Query failed: ' + result.error
       }
-      return `任务 ${args.job} #${result.number}：${result.building ? '构建中' : `已完成，结果 ${result.result ?? 'UNKNOWN'}`}` +
-        `（耗时 ${Math.round((result.duration || 0) / 1000)} 秒）\n${result.url || ''}`
+      const dur = Math.round((result.duration || 0) / 1000)
+      return `任务 ${args.job} #${result.number}：${result.building ? '构建中' : `已完成，结果 ${result.result ?? 'UNKNOWN'}`}`
+        + `（耗时 ${dur} 秒）\n${result.url || ''}`
+        + ` / Job ${args.job} #${result.number}: ${result.building ? 'building' : `done, result ${result.result ?? 'UNKNOWN'}`}`
+        + ` (elapsed ${dur}s)\n${result.url || ''}`
     },
   }))
 }

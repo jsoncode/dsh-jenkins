@@ -158,6 +158,9 @@ window.__ModuleLoader__.load({
           'queue-id-missing': '缺少队列 ID',
           'cwd-missing': '缺少工作区路径',
           'parse-failed': '响应解析失败',
+          'build-not-found': '尚未找到构建记录',
+          'unknown-op': '未知操作',
+          'params-invalid': '参数需为 JSON',
         },
       },
       en: {
@@ -281,6 +284,9 @@ window.__ModuleLoader__.load({
           'queue-id-missing': 'Missing queue ID',
           'cwd-missing': 'Missing workspace path',
           'parse-failed': 'Failed to parse response',
+          'build-not-found': 'No build record found yet',
+          'unknown-op': 'Unknown operation',
+          'params-invalid': 'Parameters must be JSON',
         },
       },
     }
@@ -301,14 +307,14 @@ window.__ModuleLoader__.load({
           const zh = LANG === 'zh'
           const sep = zh ? '：' : ': '
           if (res.code === 'env-missing') {
-            return local + sep + res.envName + (zh ? '（' : ' (') + t('available') + (zh ? '：' : ': ') + (res.available || []).join('、') + (zh ? '）' : ')')
+            return local + sep + res.envName + (zh ? '（' : ' (') + t('available') + (zh ? '：' : ': ') + (res.available || []).join(zh ? '、' : ', ') + (zh ? '）' : ')')
           }
           if (res.code === 'trigger-http') {
             return t('triggerFailed') + (zh ? '（HTTP ' : ' (HTTP ') + res.status + (zh ? '）：' : '): ') + (res.detail || '')
           }
           if (res.code === 'network-failed') {
             // 附带 curl 的真实报错（DNS/连接/TLS/超时等），便于排查
-            const detail = res.error ? String(res.error).replace(/^网络请求失败[:：]\s*/, '').trim() : ''
+            const detail = res.error ? String(res.error).replace(/^(网络请求失败|Network request failed)[:：]\s*/, '').trim() : ''
             return local + (detail ? (zh ? '：' : ': ') + detail : '')
           }
           return local
@@ -969,8 +975,8 @@ window.__ModuleLoader__.load({
     ].join('')
     // __LOGO_B64_END__
 
-    // ── dsh-jenkins-cli 配置模板（json / js / ts）──────────────────
-    const TEMPLATES = {
+    // ── dsh-jenkins-cli 配置模板（json / js / ts，按界面语言选择）──────
+    const TEMPLATES = LANG === 'zh' ? {
       json: '{\n'
         + '  "job": "build-app",\n'
         + '  "server": "生产环境",\n'
@@ -994,6 +1000,36 @@ window.__ModuleLoader__.load({
         + 'export default {\n'
         + '  job: \'build-app\',\n'
         + '  server: \'生产环境\',\n'
+        + '  environments: {\n'
+        + '    dev:  { BRANCH: \'main\', DEPLOY: false },\n'
+        + '    uat:  { BRANCH: \'develop\', DEPLOY: false },\n'
+        + '    prod: { BRANCH: \'release-1.0\', DEPLOY: true },\n'
+        + '  },\n'
+        + '} satisfies Record<string, unknown>',
+    } : {
+      json: '{\n'
+        + '  "job": "build-app",\n'
+        + '  "server": "Production",\n'
+        + '  "environments": {\n'
+        + '    "dev":  { "BRANCH": "main",        "DEPLOY": false },\n'
+        + '    "uat":  { "BRANCH": "develop",     "DEPLOY": false },\n'
+        + '    "prod": { "BRANCH": "release-1.0", "DEPLOY": true  }\n'
+        + '  }\n'
+        + '}',
+      js: '// dsh-jenkins-cli.js — CommonJS export (use when the workspace has no "type":"module")\n'
+        + 'module.exports = {\n'
+        + '  job: \'build-app\',\n'
+        + '  server: \'Production\',\n'
+        + '  environments: {\n'
+        + '    dev:  { BRANCH: \'main\', DEPLOY: false },\n'
+        + '    uat:  { BRANCH: \'develop\', DEPLOY: false },\n'
+        + '    prod: { BRANCH: \'release-1.0\', DEPLOY: true },\n'
+        + '  },\n'
+        + '}',
+      ts: '// dsh-jenkins-cli.ts — ESM export (evaluated via tsx)\n'
+        + 'export default {\n'
+        + '  job: \'build-app\',\n'
+        + '  server: \'Production\',\n'
         + '  environments: {\n'
         + '    dev:  { BRANCH: \'main\', DEPLOY: false },\n'
         + '    uat:  { BRANCH: \'develop\', DEPLOY: false },\n'
