@@ -27,8 +27,12 @@ jobs:
           node-version: 26
 
       - name: Setup pnpm
-        # node 26 不再捆绑 corepack，显式安装 pnpm（版本与 packageManager 字段一致）。
-        run: npm install -g pnpm@10
+        # node 26 不再捆绑 corepack，且 npm install -g 在 actions 环境下不可靠
+        # （pnpm 不在 PATH）。使用 pnpm 官方 action 下载独立发行版并配置 PATH，
+        # 版本与 package.json 的 packageManager 字段一致。
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
       - name: Install dependencies
         # pnpm 的 lock（pnpm-lock.yaml）完整记录 peer 解析，frozen-lockfile 严格按
