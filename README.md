@@ -131,35 +131,41 @@ The build toolchain is **tsc + tsdown** (same as `@lemcae/dsh-balance` and other
 similar plugins — no vite): `tsc -b` type-checks and emits declarations, while
 `tsdown` (Rolldown core) bundles the host half (`lib/index.js`, ESM) and the
 browser half (`lib/client.js`, single-file CJS `__ModuleLoader__` factory with
-auto banner wrapping):
+auto banner wrapping). Dependency management uses **pnpm 10** (Node 26; the
+`pnpm-lock.yaml` is committed and CI installs with `--frozen-lockfile`):
 
 ```sh
-npm run build    # clean lib → tsc -b (types + declarations) → tsdown (both halves)
-npm run verify   # simulate the host module table to check lib/client.js (optional)
-npm publish      # or npm pack / git push origin main (lib/ is committed; git installs need no build)
+pnpm install     # install per pnpm-lock.yaml
+pnpm run build   # clean lib → tsc -b (types + declarations) → tsdown (both halves)
+pnpm run verify  # simulate the host module table to check lib/client.js (optional)
+pnpm publish     # or pnpm pack / git push origin main (lib/ is committed; git installs need no build)
 ```
 
 ### Automated publishing (GitHub Actions)
 
-Pushing a `v*` tag (`npm run release` bumps the patch version, rebuilds the
+Pushing a `v*` tag (`pnpm run release` bumps the patch version, rebuilds the
 artifact, and tags it automatically) triggers
 [`.github/workflows/publish.yml`](.github/workflows/publish.yml):
 
-- **release job**: `npm ci` → `npm run check` (tsc -b) →
-  `npm run build` (tsc -b && tsdown) → `npm pack` → creates a GitHub Release
-  (auto-generated changelog, tarball attached);
+- **release job**: Setup Node 26 → `pnpm install --frozen-lockfile` →
+  `pnpm run check` (tsc -b) → `pnpm run build` (tsc -b && tsdown) →
+  `pnpm pack` → creates a GitHub Release (auto-generated changelog, tarball
+  attached);
 - **publish-npm job**: publishes to npm — requires the `NPM_TOKEN` repository
   secret (Settings → Secrets and variables → Actions); fails fast with a hint
   when it is missing.
 
 ## Development
 
+Requirements: **Node ≥ 26 + pnpm 10** (the `packageManager` field in
+`package.json` pins the pnpm version).
+
 ```sh
-npm install            # devDependencies: typescript, tsdown, @types/react, @deepseek-ai/* type packages, etc.
-npm run check          # whole-tree TypeScript type check (tsc -b)
-npm run build          # rebuild both halves after editing source (tsc -b && tsdown)
-npm run watch          # tsdown watch mode (rebuild on src/client changes)
-npm run verify         # simulate the host seed table to check lib/client.js loads
+pnpm install           # devDependencies: typescript, tsdown, @types/react, @deepseek-ai/* type packages, etc.
+pnpm run check         # whole-tree TypeScript type check (tsc -b)
+pnpm run build         # rebuild both halves after editing source (tsc -b && tsdown)
+pnpm run watch         # tsdown watch mode (rebuild on src/client changes)
+pnpm run verify        # simulate the host seed table to check lib/client.js loads
 ```
 
 - Host half lives in `src/host/`; browser half in `src/client/` (build entry

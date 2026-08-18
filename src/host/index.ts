@@ -33,7 +33,7 @@ const ServerSchema = Schema.object({
   insecure: Schema.boolean().default(false),
 })
 
-export const Config = Schema.object({
+export const Config: import('@deepseek-ai/schemastery').default<{ servers: ServerConfig[] }> = Schema.object({
   servers: Schema.array(ServerSchema).default([]),
 })
 

@@ -3,6 +3,7 @@
   "version": "0.1.25",
   "description": "Jenkins CLI plugin (dual-face): multi-server config page, model tools, and a per-workspace Run-Jenkins-Job entry with environment tabs. Bilingual UI (zh/en), no hardcoded paths, publishable to npm / GitHub",
   "type": "module",
+  "packageManager": "pnpm@10.33.0",
   "scripts": {
     "check": "tsc -b --pretty false",
     "build": "node -e \"require('fs').rmSync('lib',{recursive:true,force:true})\" && tsc -b && tsdown",
@@ -82,5 +83,8 @@
     "@deepseek-ai/dsh-tools": "^0.1.0-rc.6",
     "@deepseek-ai/schemastery": "^3.18.1",
     "react": "^18.2.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
   }
 }

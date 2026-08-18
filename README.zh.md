@@ -118,33 +118,38 @@ dsh --profile web                 # 启动（宿主半边需重启才生效）
 构建工具为 **tsc + tsdown**（与 `@lemcae/dsh-balance` 等同类插件一致，不使用
 vite）：`tsc -b` 做类型检查并生成声明文件，`tsdown`（rolldown 内核）分别打包
 宿主半边（`lib/index.js`，ESM）与浏览器半边（`lib/client.js`，CJS 单文件
-`__ModuleLoader__` 工厂，banner 自动包装）：
+`__ModuleLoader__` 工厂，banner 自动包装）。依赖管理使用 **pnpm 10**（Node
+26，lock 提交 `pnpm-lock.yaml`，CI 以 `--frozen-lockfile` 严格安装）：
 
 ```sh
-npm run build    # 清理 lib → tsc -b（类型 + 声明）→ tsdown（两半产物）
-npm run verify   # 模拟宿主模块表校验 lib/client.js 可加载（可选）
-npm publish      # 或 npm pack / git push origin main（lib/ 已提交，git 安装无需构建）
+pnpm install     # 安装依赖（按 pnpm-lock.yaml）
+pnpm run build   # 清理 lib → tsc -b（类型 + 声明）→ tsdown（两半产物）
+pnpm run verify  # 模拟宿主模块表校验 lib/client.js 可加载（可选）
+pnpm publish     # 或 pnpm pack / git push origin main（lib/ 已提交，git 安装无需构建）
 ```
 
 ### 自动发布（GitHub Actions）
 
-推送 `v*` tag（`npm run release` 会升级 patch 版本、重建产物并自动打标签）触发
+推送 `v*` tag（`pnpm run release` 会升级 patch 版本、重建产物并自动打标签）触发
 [`.github/workflows/publish.yml`](.github/workflows/publish.yml)：
 
-- **release job**：`npm ci` → `npm run check`（tsc -b）→
-  `npm run build`（tsc -b && tsdown）→ `npm pack` → 创建 GitHub Release
-  （自动生成 changelog，附 tarball）；
+- **release job**：Setup Node 26 → `pnpm install --frozen-lockfile` →
+  `pnpm run check`（tsc -b）→ `pnpm run build`（tsc -b && tsdown）→
+  `pnpm pack` → 创建 GitHub Release（自动生成 changelog，附 tarball）；
 - **publish-npm job**：发布到 npm，需要仓库配置 Secret `NPM_TOKEN`
   （Settings → Secrets and variables → Actions），缺失时快速失败并给出提示。
 
 ## 开发
 
+环境要求：**Node ≥ 26 + pnpm 10**（`package.json` 的 `packageManager` 字段固定
+pnpm 版本）。
+
 ```sh
-npm install            # 安装 devDependencies（typescript、tsdown、@types/react、@deepseek-ai/* 类型包等）
-npm run check          # 全仓 TypeScript 类型检查（tsc -b）
-npm run build          # 修改源码后重建两半产物（tsc -b && tsdown）
-npm run watch          # tsdown 监听模式（改 src/client 自动重建）
-npm run verify         # 模拟宿主 seed 表校验 lib/client.js 可加载
+pnpm install           # 安装 devDependencies（typescript、tsdown、@types/react、@deepseek-ai/* 类型包等）
+pnpm run check         # 全仓 TypeScript 类型检查（tsc -b）
+pnpm run build         # 修改源码后重建两半产物（tsc -b && tsdown）
+pnpm run watch         # tsdown 监听模式（改 src/client 自动重建）
+pnpm run verify        # 模拟宿主 seed 表校验 lib/client.js 可加载
 ```
 
 - 宿主半边源码在 `src/host/`，浏览器半边在 `src/client/`（构建入口

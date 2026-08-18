@@ -11,44 +11,13 @@
  * 运行时依赖（@deepseek-ai/*）由 package.json 的 peerDependencies 声明，
  * 安装时由宿主解析，本文件不含任何绝对路径。
  */
-import Schema from '@deepseek-ai/schemastery';
 import type { Context } from '@deepseek-ai/cordis';
 import type { OpRequest, OpResult, ServerConfig } from './types.ts';
 export declare const name = "dsh-jenkins";
 export declare const inject: string[];
-export declare const Config: Schema<Schemastery.ObjectS<{
-    servers: Schema<({
-        id?: string | null | undefined;
-        name?: string | null | undefined;
-        baseUrl?: string | null | undefined;
-        username?: string | null | undefined;
-        token?: string | null | undefined;
-        insecure?: boolean | null | undefined;
-    } & import("@deepseek-ai/cosmokit").Dict)[], Schemastery.ObjectT<{
-        id: Schema<string, string>;
-        name: Schema<string, string>;
-        baseUrl: Schema<string, string>;
-        username: Schema<string, string>;
-        token: Schema<string, string>;
-        insecure: Schema<boolean, boolean>;
-    }>[]>;
-}>, Schemastery.ObjectT<{
-    servers: Schema<({
-        id?: string | null | undefined;
-        name?: string | null | undefined;
-        baseUrl?: string | null | undefined;
-        username?: string | null | undefined;
-        token?: string | null | undefined;
-        insecure?: boolean | null | undefined;
-    } & import("@deepseek-ai/cosmokit").Dict)[], Schemastery.ObjectT<{
-        id: Schema<string, string>;
-        name: Schema<string, string>;
-        baseUrl: Schema<string, string>;
-        username: Schema<string, string>;
-        token: Schema<string, string>;
-        insecure: Schema<boolean, boolean>;
-    }>[]>;
-}>>;
+export declare const Config: import('@deepseek-ai/schemastery').default<{
+    servers: ServerConfig[];
+}>;
 export declare function apply(ctx: Context, config: {
     servers?: ServerConfig[];
 }): void;

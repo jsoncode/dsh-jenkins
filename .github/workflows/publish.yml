@@ -1,5 +1,5 @@
 # 发布工作流：推送 v* tag 时触发
-# - release job：安装依赖 + 类型检查（tsc -b）+ 构建（tsc -b && tsdown）→ 打包并直接创建 GitHub Release（非草稿），不依赖 npm 凭证
+# - release job：安装依赖（pnpm frozen-lockfile）+ 类型检查（tsc -b）+ 构建（tsc -b && tsdown）→ 打包并直接创建 GitHub Release（非草稿），不依赖 npm 凭证
 # - publish-npm job：发布到 npm（需要仓库 Secret：NPM_TOKEN），缺 token 时快速失败并给出明确提示
 #
 # 宿主半边构建为 lib/index.js（ESM）；浏览器半边由 tsdown 构建为 lib/client.js
@@ -24,26 +24,28 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 26
+
+      - name: Setup pnpm
+        # node 26 不再捆绑 corepack，显式安装 pnpm（版本与 packageManager 字段一致）。
+        run: npm install -g pnpm@10
 
       - name: Install dependencies
-        # 用 npm install 而非 npm ci：peerDependencies 的 caret 范围（如
-        # ^0.1.0-rc.6）在 registry 发新版（rc.7/rc.8…）后，npm ci 的 lock 严格
-        # 校验会因“lock 缺少最新解析”而失败（EUSAGE）。npm install 按声明范围
-        # 重新解析安装，不受 lock 校验约束。
-        run: npm install
+        # pnpm 的 lock（pnpm-lock.yaml）完整记录 peer 解析，frozen-lockfile 严格按
+        # lock 安装，无 npm arborist 的 peer 树崩溃（edgesOut）与 lock 校验问题。
+        run: pnpm install --frozen-lockfile
 
       - name: Type check
-        run: npm run check
+        run: pnpm run check
 
       - name: Build
-        run: npm run build
+        run: pnpm run build
 
       - name: Verify bundle
-        run: npm run verify
+        run: pnpm run verify
 
       - name: Pack tarball
-        run: npm pack
+        run: pnpm pack
 
       - name: Create GitHub Release (published, not draft)
         env:
@@ -65,7 +67,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 26
           registry-url: https://registry.npmjs.org
 
       - name: Check NPM_TOKEN
