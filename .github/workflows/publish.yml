@@ -5,6 +5,14 @@
 # 宿主半边构建为 lib/index.js（ESM）；浏览器半边由 tsdown 构建为 lib/client.js
 # （__ModuleLoader__ 单文件 CJS 工厂，banner 包装）。产物提交 git（git 安装无需
 # 构建），此处重建是为了保证发布内容与 tag 源码一致。
+#
+# 历史排障记录（勿删）：v0.1.26~v0.1.28 的 release job 一直挂在 Setup Node 步骤，
+# 报错 "Unable to locate executable file: pnpm"。先后尝试过 npm install -g、
+# pnpm/action-setup、npx 调用 pnpm 均无效——真正的根因是 setup-node@v5 的
+# package-manager-cache 自动缓存：该选项默认开启，会读取 package.json 的
+# packageManager 字段（pnpm@10.33.0），随后执行 `pnpm store path` 定位缓存目录；
+# 而 Setup Node 步骤执行时 pnpm 尚未安装（node 26 不再捆绑 corepack），因此失败。
+# 修复：在两个 Setup Node 步骤显式设置 package-manager-cache: false，关闭自动缓存。
 name: Publish
 
 on:
@@ -25,26 +33,32 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 26
+          # 关闭 package-manager-cache 自动缓存（v5 默认开启）：它会把 package.json
+          # 的 packageManager 字段识别为 pnpm 并执行 `pnpm store path`，而本步骤
+          # 执行时 pnpm 尚未安装（node 26 不捆绑 corepack），导致
+          # "Unable to locate executable file: pnpm"。pnpm 由后续步骤经 npx 临时
+          # 调用，无需 setup-node 做缓存恢复。
+          package-manager-cache: false
 
       - name: Install dependencies
         # 用 npx 直接调用 pnpm（node 26 自带 npm，npx 一定可用）：pnpm 临时下载
-        # 执行，不依赖 corepack（node 25+ 已移除）或任何第三方 action 的 PATH 配置
-        # （npm install -g 与 pnpm/action-setup 在 node 26 环境均出现过 pnpm 不在
-        # PATH 的问题）。frozen-lockfile 严格按 pnpm-lock.yaml 安装，pnpm 完整记录
-        # peer 解析，无 npm arborist 崩溃（edgesOut）与 lock 校验问题。
-        run: npx --yes pnpm@10 install --frozen-lockfile
+        # 执行，不依赖 corepack（node 25+ 已移除）或任何第三方 action。版本固定为
+        # 与 package.json 的 packageManager 字段一致（升级 pnpm 时需同步更新）。
+        # frozen-lockfile 严格按 pnpm-lock.yaml 安装，pnpm 完整记录 peer 解析，
+        # 无 npm arborist 崩溃（edgesOut）与 lock 校验问题。
+        run: npx --yes pnpm@10.33.0 install --frozen-lockfile
 
       - name: Type check
-        run: npx --yes pnpm@10 run check
+        run: npx --yes pnpm@10.33.0 run check
 
       - name: Build
-        run: npx --yes pnpm@10 run build
+        run: npx --yes pnpm@10.33.0 run build
 
       - name: Verify bundle
-        run: npx --yes pnpm@10 run verify
+        run: npx --yes pnpm@10.33.0 run verify
 
       - name: Pack tarball
-        run: npx --yes pnpm@10 pack
+        run: npx --yes pnpm@10.33.0 pack
 
       - name: Create GitHub Release (published, not draft)
         env:
@@ -68,6 +82,9 @@ jobs:
         with:
           node-version: 26
           registry-url: https://registry.npmjs.org
+          # 与 release job 同理：关闭 package-manager-cache 自动缓存，避免
+          # setup-node 读取 packageManager 字段后尝试执行 pnpm 而失败。
+          package-manager-cache: false
 
       - name: Check NPM_TOKEN
         if: ${{ !env.NPM_TOKEN }}
