@@ -86,17 +86,15 @@ jobs:
           # setup-node 读取 packageManager 字段后尝试执行 pnpm 而失败。
           package-manager-cache: false
 
-      - name: Check NPM_TOKEN
-        if: ${{ !env.NPM_TOKEN }}
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          echo "::error::NPM_TOKEN secret is not configured. Add an npm access token to Settings → Secrets and variables → Actions, then re-run this workflow."
-          exit 1
-
       - name: Publish to npm
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          # 在 shell 内检查 token（不用 step 级 if 判断：step 自己的 env 在它
+          # 自己的 if 条件里读不到，会导致 secret 已配置也误报"未配置"）。
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "::error::NPM_TOKEN secret is not configured. Add an npm access token to Settings → Secrets and variables → Actions, then re-run this workflow."
+            exit 1
+          fi
           echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
           npm publish --access public
