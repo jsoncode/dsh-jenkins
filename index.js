@@ -238,7 +238,13 @@ export function apply(ctx, config) {
     if (scope !== null) await scope.update({ serversJson: JSON.stringify(servers) })
   }
 
-  const findServer = (nameOrId) => readServers().find((s) => s.name === nameOrId || s.id === nameOrId)
+  // 按名称 / id / baseUrl（去尾部斜杠）匹配，兼容配置里直接写服务器地址的形式。
+  const normUrl = (u) => String(u || '').trim().replace(/\/+$/, '')
+  const findServer = (nameOrIdOrUrl) => {
+    const ref = normUrl(nameOrIdOrUrl)
+    const all = readServers()
+    return all.find((s) => s.name === nameOrIdOrUrl || s.id === nameOrIdOrUrl || normUrl(s.baseUrl) === ref)
+  }
   const maskToken = (t) => {
     if (!t) return ''
     if (t.length <= 6) return '••••••'
@@ -256,7 +262,7 @@ export function apply(ctx, config) {
 
   // ─── 操作分发：命令与工具共用 ─────────────────────────────────
 
-  // 工作区根目录的 dsh-jenkins.{json,js,ts} 配置文件（多环境 job 表单）。
+  // 工作区根目录的 dsh-jenkins.{json,js,ts} 配置文件：数组形式，每个元素 = 一个发布目标（job + server + environments 参数）。
   const fsService = ctx.get('fs')
 
   async function findConfigFile(cwd) {
@@ -293,24 +299,23 @@ export function apply(ctx, config) {
   }
 
   function normalizeConfig(raw) {
-    if (!raw || typeof raw !== 'object') throw new Error('配置文件需导出配置对象')
-    const job = String(raw.job || '').trim()
-    if (!job) throw new Error('配置缺少 job（Jenkins 任务路径）')
-    const server = raw.server ? String(raw.server).trim() : undefined
-    let environments = []
-    if (Array.isArray(raw.environments)) {
-      environments = raw.environments.map((e) => ({
-        name: String((e && e.name) || ''),
-        parameters: (e && e.parameters) || {},
-      }))
-    } else if (raw.environments && typeof raw.environments === 'object') {
-      environments = Object.keys(raw.environments).map((k) => ({
-        name: k,
-        parameters: raw.environments[k] || {},
-      }))
-    }
-    if (environments.length === 0) throw new Error('配置缺少 environments（至少一个环境，如 dev/uat/prod）')
-    return { job, server, environments }
+    // 新格式：数组，每个元素 = 一个发布目标（job + server + environments 参数表）。
+    if (!Array.isArray(raw)) throw new Error('配置文件需导出数组（每个元素一个发布目标：{ job, server, environments }）')
+    if (raw.length === 0) throw new Error('配置文件数组不能为空')
+    const entries = raw.map((e, i) => {
+      if (!e || typeof e !== 'object' || Array.isArray(e)) {
+        throw new Error('配置第 ' + (i + 1) + ' 项需为对象')
+      }
+      const job = String(e.job || '').trim()
+      if (!job) throw new Error('配置第 ' + (i + 1) + ' 项缺少 job（Jenkins 任务路径）')
+      const server = String(e.server || '').trim()
+      if (!server) throw new Error('配置第 ' + (i + 1) + ' 项缺少 server（服务器名称或地址）')
+      const parameters = (e.environments && typeof e.environments === 'object' && !Array.isArray(e.environments))
+        ? e.environments
+        : {}
+      return { job, server, parameters }
+    })
+    return { format: 'array', entries }
   }
 
   async function loadWorkspaceConfig(cwd) {
@@ -356,31 +361,45 @@ export function apply(ctx, config) {
 
     if (op === 'workspaceTrigger') {
       const cwd = String(req.cwd || '').trim()
-      const envName = String(req.env || '').trim()
       if (!cwd) return { ok: false, code: 'cwd-missing', error: 'Missing workspace path' }
       try {
         const config = await loadWorkspaceConfig(cwd)
         if (config === null) return { ok: false, code: 'no-config', error: 'No dsh-jenkins.json/js/ts config found in workspace root' }
-        const env = config.environments.find((e) => e.name === envName)
-        if (!env) {
-          return { ok: false, code: 'env-missing', envName, available: config.environments.map((e) => e.name), error: 'Environment not found: ' + envName + ' (available: ' + config.environments.map((e) => e.name).join(', ') + ')' }
-        }
-        // 服务器解析顺序：弹框选择的 serverId → 配置的 server 名称 → 唯一服务器。
+        const entries = config.entries || []
+        // 服务器解析顺序：弹框选择的 serverId → 配置元素匹配的服务器 → 唯一服务器。
         let server = req.serverId ? findServer(req.serverId) : undefined
-        if (server === undefined && config.server) server = findServer(config.server)
+        if (server === undefined) {
+          for (const en of entries) {
+            server = findServer(en.server)
+            if (server !== undefined) break
+          }
+        }
         if (server === undefined) {
           const all = readServers()
           if (all.length === 1) server = all[0]
         }
         if (server === undefined) {
-          return { ok: false, code: 'server-missing', error: 'Server "' + (config.server || '(not configured)') + '" not found; configure it in Settings → Jenkins first' }
+          return { ok: false, code: 'server-missing', error: 'Server from config not found; configure it in Settings → Jenkins first' }
         }
-        const segs = (req.job && String(req.job).trim() ? String(req.job).trim() : config.job).split('/').filter(Boolean)
+        // Job：弹框选择优先，否则取首个配置元素的 job。
+        const segs = (req.job && String(req.job).trim() ? String(req.job).trim() : (entries[0] ? entries[0].job : '')).split('/').filter(Boolean)
         if (segs.length === 0) return { ok: false, code: 'job-path-invalid', error: 'Empty job path' }
-        // 表单参数覆盖：弹框提交的已选参数优先；否则用配置文件里的环境参数。
-        const parameters = (req.parameters && typeof req.parameters === 'object' && Object.keys(req.parameters).length > 0)
+        const jobKey = segs.join('/')
+        // 表单参数覆盖：弹框提交的已选参数优先；否则用匹配元素（同服务器 + 同 job）的 environments，
+        // 再退到同 job 元素 / 首个元素的 environments。
+        let parameters = (req.parameters && typeof req.parameters === 'object' && Object.keys(req.parameters).length > 0)
           ? req.parameters
-          : env.parameters
+          : null
+        if (parameters === null) {
+          // 注意：findServer 每次重新解析服务器列表，返回新对象，须按 id 比较
+          const serverId = server.id
+          const match = entries.find((en) => {
+            const s = findServer(en.server)
+            return en.job === jobKey && s !== undefined && s.id === serverId
+          }) || entries.find((en) => en.job === jobKey)
+            || entries[0]
+          parameters = (match && match.parameters) || {}
+        }
         const result = await runOp({ op: 'trigger', serverId: server.id, segments: segs, parameters })
         if (!result.ok) return result
         let nextBuildNumber = null

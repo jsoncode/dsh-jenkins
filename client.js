@@ -5,11 +5,11 @@
  * 工厂在物化时运行并导出 { name, inject, apply }（参考 @lemcae/dsh-balance）。
  *
  * 功能：
- * 1. 设置 → Jenkins Cli 配置页：多服务器管理（settings.section）。
+ * 1. 设置 → Jenkins 配置页：多服务器管理（settings.section）。
  * 2. 侧边栏底部按钮（sidebar.footer.action）：当前工作区根目录存在
  *    dsh-jenkins.{json,js,ts} 配置时显示，点击打开「执行 Jenkins Job」弹框。
- * 3. 弹框（shell.overlay）：环境 Tab（dev/uat/prod…）切换 → 参数表单回显 →
- *    触发构建 → 轮询状态（ctx.interval）。
+ * 3. 弹框（shell.overlay）：服务器下拉（配置引用 ∩ 已配置服务器）→ Job 预选 →
+ *    参数表单回显 → 触发构建 → 轮询状态（ctx.interval）。
  *
  * 界面文案支持中/英文（跟随主界面语言 document.lang / navigator.language）；
  * 宿主错误通过 code 映射为本地化文本（tErr），未知错误回退原文。
@@ -38,12 +38,12 @@ window.__ModuleLoader__.load({
     const LANG = resolveLang()
     const COPY = {
       zh: {
-        settingsNav: 'Jenkins Cli 配置',
+        settingsNav: 'Jenkins 配置',
         settingsTitle: 'Jenkins 服务器配置',
         serverField: '服务器',
         serverPlaceholder: '搜索并选择服务器…',
         noServersHint: '未配置服务器，请先到设置中添加',
-        defaultMark: '（默认）',
+        configMark: '（配置）',
         jobField: 'Job 列表',
         jobPlaceholder: '搜索并选择 Job…',
         jobsLoading: '加载 Job 列表…',
@@ -64,7 +64,7 @@ window.__ModuleLoader__.load({
         selectJobFirst: '请先在 Job 列表中选择要发布的 Job',
         templateBtn: '模板',
         templateTitle: '配置模板',
-        templateHint: '选择格式查看 dsh-jenkins 配置模板（放到工作区根目录，含多环境参数）',
+        templateHint: '选择格式查看 dsh-Jenkins 配置模板（放到工作区根目录，数组形式配置多个发布目标：job + server + environments 参数）',
         copy: '复制',
         copied: '已复制',
         loadingParams: '加载任务参数…',
@@ -105,7 +105,6 @@ window.__ModuleLoader__.load({
         editBtn: '编辑',
         runJob: '执行 Jenkins Job',
         close: '关闭',
-        noEnv: '配置中没有环境',
         phaseQueued: '排队中',
         phaseRunning: '构建中',
         phaseDone: '构建完成',
@@ -127,19 +126,17 @@ window.__ModuleLoader__.load({
         openPage: '打开构建页面 ↗',
         backParams: '返回参数',
         rebuild: '再次构建',
-        envLabel: '环境：',
-        envField: '用户配置',
-        envPlaceholder: '搜索并选择环境…',
-        serverLabel: ' · 服务器：',
-        noParams: '该环境没有参数，可直接构建。',
+        serverMismatch: '配置中的服务器未匹配到已配置服务器：{list}，已显示全部服务器，请手动选择',
+        noParams: '该任务没有参数，可直接构建。',
         submit: '提交构建',
         submitting: '提交中…',
+        viewParams: '查看表单参数',
+        formParamsJson: '表单参数（JSON）',
         triggerFailed: '触发构建失败',
         cmdNoResult: '命令未返回结果',
         sec: ' 秒',
         min: ' 分 ',
         hour: ' 时 ',
-        available: '可用',
         errors: {
           'url-invalid': '服务器地址需以 http:// 或 https:// 开头',
           'token-required': '请填写 Token',
@@ -149,7 +146,6 @@ window.__ModuleLoader__.load({
           'forbidden': '权限不足（HTTP 403）',
           'connect-failed': '连接失败，请检查服务器地址',
           'no-config': '工作区根目录未找到 dsh-jenkins.json/js/ts 配置',
-          'env-missing': '环境不存在',
           'redirect': '服务器返回重定向，请检查服务器地址是否为最终地址（如 https://…）',
           'trigger-http': '触发构建失败',
           'network-failed': '网络请求失败，请检查网络或 Jenkins 地址',
@@ -169,7 +165,7 @@ window.__ModuleLoader__.load({
         serverField: 'Server',
         serverPlaceholder: 'Search and select server…',
         noServersHint: 'No servers configured; add one in settings',
-        defaultMark: ' (default)',
+        configMark: ' (config)',
         jobField: 'Job List',
         jobPlaceholder: 'Search and select a job…',
         jobsLoading: 'Loading jobs…',
@@ -190,7 +186,7 @@ window.__ModuleLoader__.load({
         selectJobFirst: 'Select a job from the list first',
         templateBtn: 'Template',
         templateTitle: 'Config Template',
-        templateHint: 'Choose a format to view the dsh-jenkins config template (place it in the workspace root; supports multiple environments)',
+        templateHint: 'Choose a format to view the dsh-jenkins config template (place it in the workspace root; an array of deploy targets, each with job + server + environments params)',
         copy: 'Copy',
         copied: 'Copied',
         loadingParams: 'Loading job parameters…',
@@ -231,7 +227,6 @@ window.__ModuleLoader__.load({
         editBtn: 'Edit',
         runJob: 'Run Jenkins Job',
         close: 'Close',
-        noEnv: 'No environments in config',
         phaseQueued: 'Queued',
         phaseRunning: 'Building',
         phaseDone: 'Build finished',
@@ -253,19 +248,17 @@ window.__ModuleLoader__.load({
         openPage: 'Open build page ↗',
         backParams: 'Back',
         rebuild: 'Rebuild',
-        envLabel: 'Environment: ',
-        envField: 'User Config',
-        envPlaceholder: 'Search and select environment…',
-        serverLabel: ' · Server: ',
-        noParams: 'No parameters; build directly.',
+        serverMismatch: 'Config servers not found in the configured list: {list}; showing all servers, please select manually',
+        noParams: 'No parameters for this job; build directly.',
         submit: 'Submit build',
         submitting: 'Submitting…',
+        viewParams: 'View form params',
+        formParamsJson: 'Form Params (JSON)',
         triggerFailed: 'Failed to trigger build',
         cmdNoResult: 'Command returned no result',
         sec: 's',
         min: 'm ',
         hour: 'h ',
-        available: 'Available',
         errors: {
           'url-invalid': 'Server URL must start with http:// or https://',
           'token-required': 'Token is required',
@@ -275,7 +268,6 @@ window.__ModuleLoader__.load({
           'forbidden': 'Permission denied (HTTP 403)',
           'connect-failed': 'Connection failed; check the server URL',
           'no-config': 'No dsh-jenkins.json/js/ts config in workspace root',
-          'env-missing': 'Environment not found',
           'redirect': 'Server returned a redirect; check that the URL is the final one (e.g. https://…)',
           'trigger-http': 'Failed to trigger build',
           'network-failed': 'Network request failed; check the network or the Jenkins URL',
@@ -306,9 +298,6 @@ window.__ModuleLoader__.load({
         if (local !== undefined) {
           const zh = LANG === 'zh'
           const sep = zh ? '：' : ': '
-          if (res.code === 'env-missing') {
-            return local + sep + res.envName + (zh ? '（' : ' (') + t('available') + (zh ? '：' : ': ') + (res.available || []).join(zh ? '、' : ', ') + (zh ? '）' : ')')
-          }
           if (res.code === 'trigger-http') {
             return t('triggerFailed') + (zh ? '（HTTP ' : ' (HTTP ') + res.status + (zh ? '）：' : '): ') + (res.detail || '')
           }
@@ -390,6 +379,13 @@ window.__ModuleLoader__.load({
       } catch (e) { /* ignore */ }
     }
 
+    // ── 服务器匹配：配置里的 server（名称 / id / 地址）与已配置服务器比对（地址去尾部斜杠）──
+    const normServerUrl = (u) => String(u || '').trim().replace(/\/+$/, '')
+    const matchServer = (s, ref) => {
+      const r = String(ref || '').trim()
+      return s.name === r || s.id === r || normServerUrl(s.baseUrl) === normServerUrl(r)
+    }
+
     // ── 注入样式（与 dsh-balance 相同的 bundle CSS 注入模式）──
     const CSS_ID = 'dsh-jenkins/settings.css'
     const css = [
@@ -418,14 +414,21 @@ window.__ModuleLoader__.load({
       '.dshj-field{margin-bottom:12px}',
       '.dshj-field>label{display:block;font-size:12px;font-weight:500;color:var(--dsw-alias-label-secondary,#666);margin-bottom:4px}',
       '.dshj-form-grid{display:grid;grid-template-columns:1fr;gap:14px 0;margin-top:10px}',
-      '.dshj-form-field{display:grid;grid-template-columns:84px 340px;align-items:center;gap:4px 10px}',
+      '.dshj-form-field{display:grid;grid-template-columns:168px 340px;align-items:center;gap:4px 10px}',
       '.dshj-form-label{font-size:12px;font-weight:500;color:var(--dsw-alias-label-secondary,#666);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default}',
       '.dshj-form-desc{grid-column:2;font-size:12px;color:var(--dsw-alias-label-secondary,#888);line-height:1.5;word-break:break-word}',
       '.dshj-req{color:var(--dsw-alias-state-error-primary,#d33);margin-left:2px}',
       '.dshj-check{display:inline-flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;user-select:none}',
       '.dshj-check input[type=checkbox]{width:15px;height:15px;margin:0;accent-color:var(--dsw-alias-brand-primary,#1668e3);cursor:pointer}',
       '.dshj-form-ops{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}',
-      '.dshj-submit-row{margin-top:22px;margin-left:94px}',
+      '.dshj-submit-row{margin-top:22px;margin-left:178px}',
+      '.dshj-link-btn{border:none;background:transparent;color:var(--dsw-alias-brand-primary,#1668e3);font-size:13px;cursor:pointer;padding:6px 10px;border-radius:6px;text-decoration:none}',
+      '.dshj-link-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.12));text-decoration:underline}',
+      '.dshj-link-btn:disabled{opacity:.5;cursor:not-allowed}',
+      // 长横线 label（如 "---"）渲染的虚线分割线：与「Job 列表」下方分割线同风格，备注文本居中
+      '.dshj-form-divider{display:flex;align-items:center;gap:10px;margin:16px 0 6px}',
+      '.dshj-form-divider::before,.dshj-form-divider::after{content:"";flex:1;height:0;border-top:1px dashed var(--dsw-alias-border-l3,#bbb)}',
+      '.dshj-form-divider-text{font-size:12px;color:var(--dsw-alias-label-secondary,#888);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%}',
       // 侧边栏底部入口
       '.dshj-footer-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:28px;padding:0 8px;border:none;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary,#888);cursor:pointer;font-size:12px;box-sizing:border-box}',
       '.dshj-footer-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.15));color:var(--dsw-alias-label-primary,#222)}',
@@ -449,7 +452,7 @@ window.__ModuleLoader__.load({
       '.dshj-tab{padding:5px 12px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary,#666);font-size:13px;cursor:pointer;white-space:nowrap}',
       '.dshj-tab:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.1))}',
       '.dshj-tab-active{background:var(--dsw-alias-button-primary-fill,var(--dsw-alias-brand-primary,#1668e3));color:var(--dsw-alias-label-primary-foreground,#fff);border-color:transparent;font-weight:500}',
-      '.dshj-server-field{display:grid;grid-template-columns:84px 340px;align-items:center;gap:10px;padding:10px 18px 0;flex:none}',
+      '.dshj-server-field{display:grid;grid-template-columns:168px 340px;align-items:center;gap:10px;padding:10px 18px 0;flex:none}',
       '.dshj-server-label{font-size:12px;font-weight:500;color:var(--dsw-alias-label-secondary,#666);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.dshj-divider{border-top:1px dashed var(--dsw-alias-border-l3,#bbb);margin:14px 18px 2px;flex:none}',
       '.dshj-picker-error .dshj-picker-value{color:var(--dsw-alias-state-error-primary,#d33)}',
@@ -461,6 +464,9 @@ window.__ModuleLoader__.load({
       '.dshj-picker-empty .dshj-picker-value{color:var(--dsw-alias-label-tertiary,#aaa)}',
       '.dshj-picker-caret{flex:none;font-size:10px;color:var(--dsw-alias-label-secondary,#888)}',
       '.dshj-picker-modal{width:min(480px,100%);height:min(72vh,480px);animation:none;transition:none}',
+      // JSON 弹框：就地渲染（不 portal），遮罩盖在主弹框之上，点击只关 JSON 弹框、不影响主弹框
+      '.dshj-json-backdrop{z-index:1100}',
+      '.dshj-json-modal{width:min(620px,100%);height:min(72vh,520px);min-height:360px}',
       '.dshj-picker-card{display:flex;flex-direction:column;height:100%;min-height:0;gap:0}',
       '.dshj-picker-card-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--dsw-alias-border-l1,#eee);flex:none}',
       '.dshj-picker-card-title{font-size:15px;font-weight:600;color:var(--dsw-alias-label-primary,#222)}',
@@ -975,67 +981,87 @@ window.__ModuleLoader__.load({
     ].join('')
     // __LOGO_B64_END__
 
-    // ── dsh-jenkins 配置模板（json / js / ts，按界面语言选择）──────
+    // ── dsh-Jenkins 配置模板（json / js / ts，按界面语言选择）──────
+    // 数组格式：每个元素 = 一个发布目标（job + server + environments 参数表），
+    // server 支持服务器名称 / id / 地址，弹框自动取交集并预选。
     const TEMPLATES = LANG === 'zh' ? {
-      json: '{\n'
-        + '  "job": "build-app",\n'
-        + '  "server": "生产环境",\n'
-        + '  "environments": {\n'
-        + '    "dev":  { "BRANCH": "main",        "DEPLOY": false },\n'
-        + '    "uat":  { "BRANCH": "develop",     "DEPLOY": false },\n'
-        + '    "prod": { "BRANCH": "release-1.0", "DEPLOY": true  }\n'
+      json: '[\n'
+        + '  {\n'
+        + '    "job": "build-app",\n'
+        + '    "server": "http://uat.example.com",\n'
+        + '    "environments": { "BRANCH": "main", "DEPLOY": false }\n'
+        + '  },\n'
+        + '  {\n'
+        + '    "job": "build-app",\n'
+        + '    "server": "http://prod.example.com",\n'
+        + '    "environments": { "BRANCH": "release-1.0", "DEPLOY": true }\n'
         + '  }\n'
-        + '}',
+        + ']',
       js: '// dsh-jenkins.js — CommonJS 导出（工作区无 "type":"module" 时使用）\n'
-        + 'module.exports = {\n'
-        + '  job: \'build-app\',\n'
-        + '  server: \'生产环境\',\n'
-        + '  environments: {\n'
-        + '    dev:  { BRANCH: \'main\', DEPLOY: false },\n'
-        + '    uat:  { BRANCH: \'develop\', DEPLOY: false },\n'
-        + '    prod: { BRANCH: \'release-1.0\', DEPLOY: true },\n'
+        + 'module.exports = [\n'
+        + '  {\n'
+        + '    job: \'build-app\',\n'
+        + '    server: \'http://uat.example.com\',\n'
+        + '    environments: { BRANCH: \'main\', DEPLOY: false },\n'
         + '  },\n'
-        + '}',
+        + '  {\n'
+        + '    job: \'build-app\',\n'
+        + '    server: \'http://prod.example.com\',\n'
+        + '    environments: { BRANCH: \'release-1.0\', DEPLOY: true },\n'
+        + '  },\n'
+        + ']',
       ts: '// dsh-jenkins.ts — ESM 导出（经 tsx 求值）\n'
-        + 'export default {\n'
-        + '  job: \'build-app\',\n'
-        + '  server: \'生产环境\',\n'
-        + '  environments: {\n'
-        + '    dev:  { BRANCH: \'main\', DEPLOY: false },\n'
-        + '    uat:  { BRANCH: \'develop\', DEPLOY: false },\n'
-        + '    prod: { BRANCH: \'release-1.0\', DEPLOY: true },\n'
+        + 'export default [\n'
+        + '  {\n'
+        + '    job: \'build-app\',\n'
+        + '    server: \'http://uat.example.com\',\n'
+        + '    environments: { BRANCH: \'main\', DEPLOY: false },\n'
         + '  },\n'
-        + '} satisfies Record<string, unknown>',
+        + '  {\n'
+        + '    job: \'build-app\',\n'
+        + '    server: \'http://prod.example.com\',\n'
+        + '    environments: { BRANCH: \'release-1.0\', DEPLOY: true },\n'
+        + '  },\n'
+        + '] satisfies Array<Record<string, unknown>>',
     } : {
-      json: '{\n'
-        + '  "job": "build-app",\n'
-        + '  "server": "Production",\n'
-        + '  "environments": {\n'
-        + '    "dev":  { "BRANCH": "main",        "DEPLOY": false },\n'
-        + '    "uat":  { "BRANCH": "develop",     "DEPLOY": false },\n'
-        + '    "prod": { "BRANCH": "release-1.0", "DEPLOY": true  }\n'
+      json: '[\n'
+        + '  {\n'
+        + '    "job": "build-app",\n'
+        + '    "server": "http://uat.example.com",\n'
+        + '    "environments": { "BRANCH": "main", "DEPLOY": false }\n'
+        + '  },\n'
+        + '  {\n'
+        + '    "job": "build-app",\n'
+        + '    "server": "http://prod.example.com",\n'
+        + '    "environments": { "BRANCH": "release-1.0", "DEPLOY": true }\n'
         + '  }\n'
-        + '}',
+        + ']',
       js: '// dsh-jenkins.js — CommonJS export (use when the workspace has no "type":"module")\n'
-        + 'module.exports = {\n'
-        + '  job: \'build-app\',\n'
-        + '  server: \'Production\',\n'
-        + '  environments: {\n'
-        + '    dev:  { BRANCH: \'main\', DEPLOY: false },\n'
-        + '    uat:  { BRANCH: \'develop\', DEPLOY: false },\n'
-        + '    prod: { BRANCH: \'release-1.0\', DEPLOY: true },\n'
+        + 'module.exports = [\n'
+        + '  {\n'
+        + '    job: \'build-app\',\n'
+        + '    server: \'http://uat.example.com\',\n'
+        + '    environments: { BRANCH: \'main\', DEPLOY: false },\n'
         + '  },\n'
-        + '}',
+        + '  {\n'
+        + '    job: \'build-app\',\n'
+        + '    server: \'http://prod.example.com\',\n'
+        + '    environments: { BRANCH: \'release-1.0\', DEPLOY: true },\n'
+        + '  },\n'
+        + ']',
       ts: '// dsh-jenkins.ts — ESM export (evaluated via tsx)\n'
-        + 'export default {\n'
-        + '  job: \'build-app\',\n'
-        + '  server: \'Production\',\n'
-        + '  environments: {\n'
-        + '    dev:  { BRANCH: \'main\', DEPLOY: false },\n'
-        + '    uat:  { BRANCH: \'develop\', DEPLOY: false },\n'
-        + '    prod: { BRANCH: \'release-1.0\', DEPLOY: true },\n'
+        + 'export default [\n'
+        + '  {\n'
+        + '    job: \'build-app\',\n'
+        + '    server: \'http://uat.example.com\',\n'
+        + '    environments: { BRANCH: \'main\', DEPLOY: false },\n'
         + '  },\n'
-        + '} satisfies Record<string, unknown>',
+        + '  {\n'
+        + '    job: \'build-app\',\n'
+        + '    server: \'http://prod.example.com\',\n'
+        + '    environments: { BRANCH: \'release-1.0\', DEPLOY: true },\n'
+        + '  },\n'
+        + '] satisfies Array<Record<string, unknown>>',
     }
 
     function apply(ctx) {
@@ -1046,7 +1072,7 @@ window.__ModuleLoader__.load({
       if (slots === undefined) return
       const el = React.createElement
 
-      // ─── 侧边栏底部入口：当前工作区有 dsh-jenkins 配置才显示 ──────────
+      // ─── 侧边栏底部入口：当前工作区有 dsh-Jenkins 配置才显示 ──────────
 
       const FooterButton = (props) => {
         const wide = !!props.wide
@@ -1060,6 +1086,9 @@ window.__ModuleLoader__.load({
           console.warn('[dsh-jenkins] footer slot missing standard props', { hasWs: !!props.useWorkspaces, hasSs: !!props.useSessions })
         }
         const [launch, setLaunch] = React.useState(null)
+        // 只有「新数组格式」的配置（entries 非空）才显示入口；旧格式/无效配置一律视为未配置。
+        // 防御旧宿主返回旧结构（{job, server, environments}）导致入口误显示。
+        const isDeployTargets = (cfg) => !!(cfg && Array.isArray(cfg.entries) && cfg.entries.length > 0)
         const cwd = React.useMemo(() => {
           const list = Array.isArray(workspaceItems) ? workspaceItems : []
           const current = list.find((w) => Array.isArray(w.sessionIds) && w.sessionIds.indexOf(currentSessionId) !== -1)
@@ -1073,19 +1102,21 @@ window.__ModuleLoader__.load({
           run(currentSessionId || '', { op: 'workspaceConfig', cwd }).then((r) => {
             if (!alive) return
             console.log('[dsh-jenkins] workspaceConfig result', r)
-            if (r && r.ok && r.found && r.config) setLaunch({ cwd, config: r.config, sessionId: currentSessionId || '' })
+            // 仅配置存在、且为新数组格式才显示入口；配置缺失 / 旧格式 / 无效均视为未配置
+            if (r && r.ok && r.found && isDeployTargets(r.config)) setLaunch({ cwd, config: r.config, sessionId: currentSessionId || '' })
           }).catch((e) => {
             console.error('[dsh-jenkins] workspaceConfig failed', cwd, e)
           })
           return () => { alive = false }
         }, [cwd, currentSessionId])
         if (!launch) return null
+        const firstJob = (Array.isArray(launch.config && launch.config.entries) && launch.config.entries[0] && launch.config.entries[0].job) || ''
         return el(React.Fragment, null,
           el('div', { className: 'dshj-footer-group' + (wide ? '' : ' dshj-footer-rail-group') },
             el('button', {
               type: 'button',
               className: 'dshj-footer-btn' + (wide ? '' : ' dshj-footer-btn-rail'),
-              title: t('runJob') + '（' + (launch.config.job || '') + ' · ' + launch.cwd + '）',
+              title: t('runJob') + '（' + firstJob + ' · ' + launch.cwd + '）',
               'aria-label': t('runJob'),
               onClick: () => store.open(launch),
             },
@@ -1106,7 +1137,7 @@ window.__ModuleLoader__.load({
         )
       }
 
-      // ─── 设置 → Jenkins Cli 配置页：服务器管理 ─────────────────────
+      // ─── 设置 → Jenkins 配置页：服务器管理 ─────────────────────
 
       const SettingsPage = (props) => {
         const sessionId = props.sessionId
@@ -1290,17 +1321,21 @@ window.__ModuleLoader__.load({
       const LauncherModalInner = ({ launch }) => {
         const config = launch.config
         const sessionId = launch.sessionId || ''
-        const environments = Array.isArray(config.environments) ? config.environments : []
-        // 上次发布回显缓存（按工作区路径）：服务器 / Job / 环境 / 参数
+        // 配置数组：每个元素 = { job, server, parameters }（server 即发布目标/环境标识）
+        const entries = Array.isArray(config && config.entries) ? config.entries : []
+        const firstEntry = entries[0] || null
+        // 配置中引用过的服务器标识（名称 / id / 地址），用于与已配置服务器取交集
+        const configServerRefs = entries.map((e) => e.server).filter(Boolean)
+        // 上次发布回显缓存（按工作区路径）：服务器 / Job / 参数
         const cached = readCache()[launch.cwd] || null
-        const initEnvName = cached && environments.some((e) => e.name === cached.env) ? cached.env : (environments.length ? environments[0].name : '')
-        const [activeEnv, setActiveEnv] = React.useState(initEnvName)
         const [formValues, setFormValues] = React.useState({})
         const [submitting, setSubmitting] = React.useState(false)
         const [actionError, setActionError] = React.useState('')
         // 注意：不能用 `run` 命名构建状态，会遮蔽外层 RPC 助手 run()。
         const [runState, setRunState] = React.useState(null)
         const [servers, setServers] = React.useState([])
+        const [serverPool, setServerPool] = React.useState([]) // 下拉候选：配置交集（交集为空时退化为全部服务器）
+        const [serverMismatch, setServerMismatch] = React.useState([]) // 配置里未匹配到的服务器标识
         const [selectedServerId, setSelectedServerId] = React.useState('')
         const [detail, setDetail] = React.useState(null) // 服务端任务参数定义 { params, nextBuildNumber, ... }
         const [detailLoading, setDetailLoading] = React.useState(false)
@@ -1312,25 +1347,35 @@ window.__ModuleLoader__.load({
         const [jobSearch, setJobSearch] = React.useState('')
         const [jobPickOpen, setJobPickOpen] = React.useState(false)
         const [jobPickSearch, setJobPickSearch] = React.useState('')
+        const [paramsOpen, setParamsOpen] = React.useState(false) // 查看表单参数 JSON 弹框
 
-        const env = environments.find((e) => e.name === activeEnv) || null
         const selectedServer = servers.find((s) => s.id === selectedServerId) || null
+        // 长横线 label（如 "---" / "————"）：渲染为虚线分割线（带备注），不随表单提交
+        const IS_DASH_LABEL = /^[-—–]{3,}$/
 
-        // 加载已配置服务器；优先回显上次使用的服务器，否则取配置中的 server 名称（缺省第一台）。
+        // 加载已配置服务器；下拉候选 = 配置引用过的服务器 ∩ 已配置服务器（交集为空则退化为全部，并提示）。
+        // 预选顺序：缓存上次使用的服务器（限交集内）→ 交集第一台（交集为空时全部第一台）。
         React.useEffect(() => {
           let alive = true
           run(sessionId, { op: 'list' }).then((r) => {
             if (!alive) return
             const list = (r && r.ok) ? (r.servers || []) : []
             setServers(list)
-            const cachedServer = cached && list.find((s) => s.id === cached.serverId)
-            const preferred = cachedServer || list.find((s) => s.name === (config.server || '')) || (list.length ? list[0] : null)
+            const matched = list.filter((s) => configServerRefs.some((ref) => matchServer(s, ref)))
+            const unmatched = configServerRefs.filter((ref) => !list.some((s) => matchServer(s, ref)))
+            const pool = matched.length ? matched : list
+            setServerPool(pool)
+            // 仅在交集为空时提示（此时下拉已退化为全部服务器）
+            setServerMismatch(matched.length === 0 ? unmatched : [])
+            const cachedServer = cached && pool.find((s) => s.id === cached.serverId)
+            const preferred = cachedServer || (pool.length ? pool[0] : null)
             setSelectedServerId(preferred ? preferred.id : '')
           }).catch(() => { if (alive) setServers([]) })
           return () => { alive = false }
         }, [])
 
-        // 按所选服务器拉取真实 Job 列表（排除文件夹）；配置里的 job 若存在则预选。
+        // 按所选服务器拉取真实 Job 列表（排除文件夹）；配置里该服务器对应的 job 若存在则预选
+        // （缓存上次使用的 Job 优先；配置里没有匹配的 job 时留空由用户选择）。
         React.useEffect(() => {
           let alive = true
           setJobs([])
@@ -1346,7 +1391,8 @@ window.__ModuleLoader__.load({
               const list = (r.jobs || []).filter((j) => !j.folder)
               setJobs(list)
               const cachedJob = cached && cached.jobPath ? (list.find((j) => j.path === cached.jobPath) || null) : null
-              const preferred = cachedJob || list.find((j) => j.path === (config.job || '')) || null
+              const entry = entries.find((en) => matchServer(selectedServer, en.server)) || null
+              const preferred = cachedJob || (entry && list.find((j) => j.path === entry.job)) || null
               setSelectedJobPath(preferred ? preferred.path : '')
               setJobSearch(preferred ? preferred.path : '')
             } else {
@@ -1377,12 +1423,13 @@ window.__ModuleLoader__.load({
           return () => { alive = false }
         }, [selectedJobPath])
 
-        // 统一初始化表单：配置环境参数（优先） + 服务端参数默认值（补全缺失键）。
-        // 环境 / 服务器切换 / 服务端参数变化时重建，干净丢弃上一环境/服务器的字段。
+        // 统一初始化表单：匹配「当前服务器 + 当前 Job」的配置元素参数（优先）+ 服务端参数默认值（补全缺失键）。
+        // Job / 服务器切换 / 服务端参数变化时重建，干净丢弃上一选择的字段。
         React.useEffect(() => {
           const init = {}
-          if (env) {
-            const params = env.parameters || {}
+          const entry = selectedServer ? entries.find((en) => en.job === selectedJobPath && matchServer(selectedServer, en.server)) || null : null
+          if (entry) {
+            const params = entry.parameters || {}
             for (const k of Object.keys(params)) {
               const v = params[k]
               init[k] = typeof v === 'boolean' ? v : (v === null || v === undefined ? '' : String(v))
@@ -1395,9 +1442,9 @@ window.__ModuleLoader__.load({
               ? String(p.defaultValue) === 'true'
               : (p.defaultValue === null || p.defaultValue === undefined ? '' : String(p.defaultValue))
           }
-          // 回显上次发布参数：仅当缓存的 Job + 环境与当前选择一致时，覆盖同名字段
+          // 回显上次发布参数：仅当缓存的 Job 与当前选择一致时，覆盖同名字段
           const fresh = readCache()[launch.cwd] || null
-          if (fresh && fresh.jobPath === selectedJobPath && fresh.env === activeEnv && fresh.parameters) {
+          if (fresh && fresh.jobPath === selectedJobPath && fresh.parameters) {
             for (const k of Object.keys(init)) {
               if (Object.prototype.hasOwnProperty.call(fresh.parameters, k)) {
                 const v = fresh.parameters[k]
@@ -1408,7 +1455,7 @@ window.__ModuleLoader__.load({
           setFormValues(init)
           setRunState(null)
           setActionError('')
-        }, [activeEnv, launch.cwd, detail ? detail.params : null])
+        }, [selectedJobPath, launch.cwd, detail ? detail.params : null])
 
         const runRef = React.useRef(runState)
         runRef.current = runState
@@ -1454,33 +1501,35 @@ window.__ModuleLoader__.load({
         }, [runState ? runState.phase : null, runState ? runState.queueId : null, runState ? runState.buildNumber : null])
 
         const onSubmit = () => {
-          if (!env || submitting) return
+          if (submitting) return
           if (!selectedJobPath) { setActionError(t('jobRequired')); return }
           setSubmitting(true)
+          setParamsOpen(false)
           setActionError('')
           // 只提交「配置里设置过的」+「与服务端默认值不同的」字段，未配置的交给 Jenkins 默认。
-          const envParams = env.parameters || {}
+          const entry = selectedServer ? entries.find((en) => en.job === selectedJobPath && matchServer(selectedServer, en.server)) || null : null
+          const entryParams = (entry && entry.parameters) || {}
           const serverDefaults = {}
           if (detail && Array.isArray(detail.params)) {
             for (const p of detail.params) serverDefaults[p.name] = p.defaultValue
           }
           const submitValues = {}
           for (const k of Object.keys(formValues)) {
-            const inConfig = Object.prototype.hasOwnProperty.call(envParams, k)
+            if (IS_DASH_LABEL.test(k)) continue // 分割线字段不随表单提交
+            const inConfig = Object.prototype.hasOwnProperty.call(entryParams, k)
             if (inConfig) submitValues[k] = formValues[k]
             else if (serverDefaults[k] === undefined || String(formValues[k]) !== String(serverDefaults[k])) submitValues[k] = formValues[k]
           }
-          run(sessionId, { op: 'workspaceTrigger', cwd: launch.cwd, env: activeEnv, serverId: selectedServerId, job: selectedJobPath, parameters: submitValues }).then((res) => {
+          run(sessionId, { op: 'workspaceTrigger', cwd: launch.cwd, serverId: selectedServerId, job: selectedJobPath, parameters: submitValues }).then((res) => {
             setSubmitting(false)
             if (res && res.ok) {
-              // 记录本次发布（服务器 / Job / 环境 / 参数），下次打开弹框自动回显
-              writeCache(launch.cwd, { serverId: selectedServerId, jobPath: selectedJobPath, env: activeEnv, parameters: submitValues })
-              // 追加到发布历史（时间、Job、环境、服务器、参数；结果在轮询结束时回填）
+              // 记录本次发布（服务器 / Job / 参数），下次打开弹框自动回显
+              writeCache(launch.cwd, { serverId: selectedServerId, jobPath: selectedJobPath, parameters: submitValues })
+              // 追加到发布历史（时间、Job、服务器、参数；结果在轮询结束时回填）
               const historyId = pushHistory(launch.cwd, {
                 id: 'h' + Date.now() + '-' + Math.floor(Math.random() * 1e6),
                 time: Date.now(),
                 job: selectedJobPath,
-                env: activeEnv,
                 server: selectedServer ? selectedServer.name : '',
                 params: submitValues,
                 result: null,
@@ -1501,30 +1550,52 @@ window.__ModuleLoader__.load({
           for (const p of detail.params) serverParamsByName[p.name] = p
         }
         const formKeys = Object.keys(formValues)
+        // 表单参数 JSON 视图：保留每个字段的完整定义（类型/默认值/描述/选项）与当前值，便于调试
+        const formParamsJson = {}
+        for (const k of formKeys) {
+          const p = serverParamsByName[k]
+          const item = { value: formValues[k] }
+          if (p) {
+            if (p.description) item.description = p.description
+            if (p.type) item.type = p.type
+            if (p.defaultValue !== null && p.defaultValue !== undefined) item.defaultValue = p.defaultValue
+            if (Array.isArray(p.choices) && p.choices.length) item.choices = p.choices
+          } else {
+            item.source = 'config'
+          }
+          if (IS_DASH_LABEL.test(k)) item.submitted = false
+          formParamsJson[k] = item
+        }
 
-        return el('div', { className: 'dshj-backdrop', onClick: () => store.close() },
+        return el(React.Fragment, null,
+          el('div', { className: 'dshj-backdrop' },
           el('div', { className: 'dshj-modal', onClick: (e) => e.stopPropagation() },
             el('div', { className: 'dshj-modal-header' },
               el('div', null,
                 el('div', { className: 'dshj-modal-title' }, t('runJob')),
-                el('div', { className: 'dshj-modal-sub' }, (selectedJobPath || config.job || '') + ' · ' + launch.cwd),
+                el('div', { className: 'dshj-modal-sub' }, (selectedJobPath || (firstEntry && firstEntry.job) || '') + ' · ' + launch.cwd),
               ),
               el('button', { type: 'button', className: 'dshj-close', 'aria-label': t('close'), title: t('close'), onClick: () => store.close() }, '✕'),
             ),
             el('div', { className: 'dshj-server-field' },
               el('label', { className: 'dshj-server-label' }, t('serverField')),
-              // 恒为 select（空态用禁用占位选项），避免服务器列表返回时行高变化
+              // 恒为 select（空态用禁用占位选项），避免服务器列表返回时行高变化；
+              // 候选 = 配置交集（交集为空时退化为全部服务器），带「（配置）」标记提示哪些被项目配置引用
               el('select', {
                 className: 'dshj-select',
                 value: selectedServerId,
-                disabled: !!runState || submitting || servers.length === 0,
+                disabled: !!runState || submitting || serverPool.length === 0,
                 onChange: (e) => setSelectedServerId(e.target.value),
               },
-                servers.length === 0
+                serverPool.length === 0
                   ? el('option', { key: '__none', value: '', disabled: true }, t('noServersHint'))
-                  : servers.map((s) => el('option', { key: s.id, value: s.id }, s.name + (s.name === config.server ? t('defaultMark') : ''))),
+                  : serverPool.map((s) => el('option', { key: s.id, value: s.id }, s.name + (configServerRefs.some((ref) => matchServer(s, ref)) ? t('configMark') : ''))),
               ),
             ),
+            serverMismatch.length > 0 ? el('div', { className: 'dshj-server-field' },
+              el('label', { className: 'dshj-server-label' }, ''),
+              el('div', { className: 'dshj-warn', style: { fontSize: 12, lineHeight: 1.5 } }, t('serverMismatch', { list: serverMismatch.join(LANG === 'zh' ? '、' : ', ') })),
+            ) : null,
             el('div', { className: 'dshj-server-field' },
               el('label', { className: 'dshj-server-label' }, t('jobField')),
               // 右侧始终渲染同一个选择按钮（高度恒定），加载/出错/空态的状态文本显示在按钮内
@@ -1558,25 +1629,10 @@ window.__ModuleLoader__.load({
                 onClose: () => setJobPickOpen(false),
               }),
             ),
-            el('div', { className: 'dshj-server-field' },
-              el('label', { className: 'dshj-server-label' }, t('envField')),
-              // 恒为 select（空态用禁用占位选项），行高恒定
-              el('select', {
-                className: 'dshj-select',
-                value: activeEnv,
-                disabled: !!runState || submitting || environments.length === 0,
-                onChange: (e) => setActiveEnv(e.target.value),
-              },
-                environments.length === 0
-                  ? el('option', { key: '__none', value: '', disabled: true }, t('noEnv'))
-                  : environments.map((e) => el('option', { key: e.name, value: e.name }, e.name)),
-              ),
-            ),
-            // 「用户配置」下方的虚线分割线：分隔上方的选择区与下方的参数表单
+            // 「Job 列表」下方的虚线分割线：分隔上方的选择区与下方的参数表单
             el('div', { className: 'dshj-divider' }),
             el('div', { className: 'dshj-modal-body' },
-              !env ? el('div', { className: 'dshj-empty' }, t('noEnv'))
-                : runState ? el('div', null,
+              runState ? el('div', null,
                     el('div', { className: 'dshj-run-title' }, runState.phase === 'queued' ? t('phaseQueued') : runState.phase === 'running' ? t('phaseRunning') : runState.phase === 'done' ? t('phaseDone') : t('phaseError')),
                     el('div', { className: 'dshj-run-message ' + (runState.phase === 'done' ? (runState.result === 'SUCCESS' ? 'dshj-ok' : (runState.result === 'FAILURE' || runState.result === 'ABORTED' ? 'dshj-err' : 'dshj-warn')) : '') }, runState.message || ''),
                     (runState.phase === 'queued' || runState.phase === 'running') ? el('div', { className: 'dshj-spinner' }) : null,
@@ -1600,6 +1656,12 @@ window.__ModuleLoader__.load({
                               const v = formValues[k]
                               const p = serverParamsByName[k]
                               const set = (nv) => setFormValues((prev) => ({ ...prev, [k]: nv }))
+                              // 长横线 label：不渲染 label+控件行，改为虚线分割线（备注文本显示在线上）
+                              if (IS_DASH_LABEL.test(k)) {
+                                return el('div', { key: k, className: 'dshj-form-divider' },
+                                  p && p.description ? el('span', { className: 'dshj-form-divider-text' }, p.description) : null,
+                                )
+                              }
                               let control
                               if (p && p.type === 'boolean') {
                                 control = el('label', { className: 'dshj-check' },
@@ -1625,7 +1687,7 @@ window.__ModuleLoader__.load({
                                   onChange: (e) => set(e.target.value),
                                 })
                               }
-                              // 与「服务器 / Job 列表 / 用户配置」行一致的栅格：左侧 label（右对齐、定宽），右侧 value（定宽）；
+                              // 与「服务器 / Job 列表」行一致的栅格：左侧 label（右对齐、定宽），右侧 value（定宽）；
                               // 描述单独占一行（grid 第二行），不影响 label 与 value 的水平对齐
                               return el('div', { key: k, className: 'dshj-form-field' },
                                 el('label', { className: 'dshj-form-label', title: k }, k),
@@ -1638,10 +1700,26 @@ window.__ModuleLoader__.load({
                       actionError ? el('div', { className: 'dshj-err' }, actionError) : null,
                       el('div', { className: 'dshj-form-ops dshj-submit-row' },
                         el('button', { type: 'button', className: 'dshj-btn dshj-btn-primary', disabled: submitting, onClick: onSubmit }, submitting ? t('submitting') : t('submit')),
+                        el('button', { type: 'button', className: 'dshj-link-btn', disabled: submitting, onClick: () => setParamsOpen(true) }, t('viewParams')),
                       ),
                     ),
             ),
           ),
+          paramsOpen ? el('div', { className: 'dshj-backdrop dshj-json-backdrop' },
+            el('div', { className: 'dshj-modal dshj-json-modal', onClick: (e) => e.stopPropagation() },
+              el('div', { className: 'dshj-modal-header' },
+                el('div', null,
+                  el('div', { className: 'dshj-modal-title' }, t('formParamsJson')),
+                  el('div', { className: 'dshj-modal-sub' }, selectedJobPath || ''),
+                ),
+                el('button', { type: 'button', className: 'dshj-close', 'aria-label': t('close'), title: t('close'), onClick: () => setParamsOpen(false) }, '✕'),
+              ),
+              el('div', { className: 'dshj-modal-body' },
+                el('pre', { className: 'dshj-code' }, JSON.stringify(formParamsJson, null, 2)),
+              ),
+            ),
+          ) : null,
+          )
         )
       }
 
