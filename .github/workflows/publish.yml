@@ -1,6 +1,13 @@
 # 发布工作流：推送 v* tag 时触发
-# - release job：安装依赖（pnpm frozen-lockfile）+ 类型检查（tsc -b）+ 构建（tsc -b && tsdown）→ 打包并直接创建 GitHub Release（非草稿），不依赖 npm 凭证
-# - publish-npm job：发布到 npm（需要仓库 Secret：NPM_TOKEN），缺 token 时快速失败并给出明确提示
+# - release job：安装依赖（pnpm frozen-lockfile）+ 类型检查（tsc -b）+ 构建（tsc -b && tsdown）→ 打包并直接创建 GitHub Release（非草稿）
+#
+# npm 发布改为本地手动执行（npm publish），不再由 CI 承担：
+# 2026 年 npm 已吊销 Classic/Automation token，仅剩 Granular token 且默认要求
+# 2FA（账号开启 "Require 2FA for write actions" 时 publish 必须 OTP，CI 无法
+# 交互输入）；用普通 Granular token 在 CI 发布会得到误导性的 E404。如后续要
+# 恢复 CI 自动发布，请改用 npm Trusted Publishing（OIDC）：先在 npm 包页面把
+# 本仓库配置为可信发布者，再在 workflow 加 permissions: id-token: write 并
+# 用 npm publish --provenance，无需 token 与 2FA。
 #
 # 宿主半边构建为 lib/index.js（ESM）；浏览器半边由 tsdown 构建为 lib/client.js
 # （__ModuleLoader__ 单文件 CJS 工厂，banner 包装）。产物提交 git（git 安装无需
@@ -12,7 +19,7 @@
 # package-manager-cache 自动缓存：该选项默认开启，会读取 package.json 的
 # packageManager 字段（pnpm@10.33.0），随后执行 `pnpm store path` 定位缓存目录；
 # 而 Setup Node 步骤执行时 pnpm 尚未安装（node 26 不再捆绑 corepack），因此失败。
-# 修复：在两个 Setup Node 步骤显式设置 package-manager-cache: false，关闭自动缓存。
+# 修复：在 Setup Node 步骤显式设置 package-manager-cache: false，关闭自动缓存。
 name: Publish
 
 on:
@@ -69,32 +76,3 @@ jobs:
             --generate-notes \
             --verify-tag \
             *.tgz
-
-  publish-npm:
-    runs-on: ubuntu-latest
-    needs: release
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Node
-        uses: actions/setup-node@v5
-        with:
-          node-version: 26
-          registry-url: https://registry.npmjs.org
-          # 与 release job 同理：关闭 package-manager-cache 自动缓存，避免
-          # setup-node 读取 packageManager 字段后尝试执行 pnpm 而失败。
-          package-manager-cache: false
-
-      - name: Publish to npm
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          # 在 shell 内检查 token（不用 step 级 if 判断：step 自己的 env 在它
-          # 自己的 if 条件里读不到，会导致 secret 已配置也误报"未配置"）。
-          if [ -z "$NPM_TOKEN" ]; then
-            echo "::error::NPM_TOKEN secret is not configured. Add an npm access token to Settings → Secrets and variables → Actions, then re-run this workflow."
-            exit 1
-          fi
-          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
-          npm publish --access public
