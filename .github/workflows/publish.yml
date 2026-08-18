@@ -26,30 +26,25 @@ jobs:
         with:
           node-version: 26
 
-      - name: Setup pnpm
-        # node 26 不再捆绑 corepack，且 npm install -g 在 actions 环境下不可靠
-        # （pnpm 不在 PATH）。使用 pnpm 官方 action 下载独立发行版并配置 PATH，
-        # 版本与 package.json 的 packageManager 字段一致。
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
       - name: Install dependencies
-        # pnpm 的 lock（pnpm-lock.yaml）完整记录 peer 解析，frozen-lockfile 严格按
-        # lock 安装，无 npm arborist 的 peer 树崩溃（edgesOut）与 lock 校验问题。
-        run: pnpm install --frozen-lockfile
+        # 用 npx 直接调用 pnpm（node 26 自带 npm，npx 一定可用）：pnpm 临时下载
+        # 执行，不依赖 corepack（node 25+ 已移除）或任何第三方 action 的 PATH 配置
+        # （npm install -g 与 pnpm/action-setup 在 node 26 环境均出现过 pnpm 不在
+        # PATH 的问题）。frozen-lockfile 严格按 pnpm-lock.yaml 安装，pnpm 完整记录
+        # peer 解析，无 npm arborist 崩溃（edgesOut）与 lock 校验问题。
+        run: npx --yes pnpm@10 install --frozen-lockfile
 
       - name: Type check
-        run: pnpm run check
+        run: npx --yes pnpm@10 run check
 
       - name: Build
-        run: pnpm run build
+        run: npx --yes pnpm@10 run build
 
       - name: Verify bundle
-        run: pnpm run verify
+        run: npx --yes pnpm@10 run verify
 
       - name: Pack tarball
-        run: pnpm pack
+        run: npx --yes pnpm@10 pack
 
       - name: Create GitHub Release (published, not draft)
         env:
