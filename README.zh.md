@@ -2,7 +2,7 @@
 
 DeepSeek Harness 插件（**双面**：宿主 + 浏览器）：管理多台 Jenkins 服务器与 Token，
 支持设置页配置、模型工具触发构建、工作区级「执行 Jenkins Job」入口。无硬编码路径、
-纯 ESM、可发布到 npm / GitHub。界面文案中英双语（跟随主界面语言）。
+全量 TypeScript、可发布到 npm / GitHub。界面文案中英双语（跟随主界面语言）。
 
 [English](README.md)
 
@@ -28,9 +28,14 @@ DeepSeek Harness 插件（**双面**：宿主 + 浏览器）：管理多台 Jenk
 ## 文件结构
 
 ```
-├── index.js            # 宿主半边：Config、settings namespace、dsh-jenkins 命令、模型工具、工作区配置 op
-├── client.js           # 浏览器半边（__ModuleLoader__ bundle）：设置页、底部入口、执行弹框（可搜索下拉 + 上次参数回显）
-├── index.d.ts          # 宿主类型声明
+├── src/host/*.ts       # 宿主半边源码：index.ts（入口）、jenkins.ts（curl 核心）、ops.ts（op 分发）、workspace-config.ts、types.ts
+├── src/client/*.tsx    # 浏览器半边源码（React TSX 组件）：设置页、底部入口、执行弹框、历史弹框
+├── lib/index.js        # 宿主半边构建产物（tsdown，ESM），提交 git 以支持 git 安装
+├── lib/client.js       # 浏览器半边构建产物（tsdown → __ModuleLoader__ 工厂），提交 git
+├── lib/types/          # 类型声明（tsc -b 生成）
+├── scripts/            # verify-client.mjs（模拟宿主 seed 表校验产物）
+├── tsdown.config.ts    # tsdown 构建配置（node half + client bundle banner 包装）
+├── tsconfig.json       # solution：引用 tsconfig.host.json / tsconfig.client.json
 ├── cordis.patch.yml    # 组合包 patch：按包名引用插件行（无路径）
 ├── package.json        # dsh.bundle + dsh.client(web) manifest + peerDependencies
 ├── README.md           # 英文文档（默认）
@@ -110,11 +115,44 @@ dsh --profile web                 # 启动（宿主半边需重启才生效）
 
 ## 发布
 
+构建工具为 **tsc + tsdown**（与 `@lemcae/dsh-balance` 等同类插件一致，不使用
+vite）：`tsc -b` 做类型检查并生成声明文件，`tsdown`（rolldown 内核）分别打包
+宿主半边（`lib/index.js`，ESM）与浏览器半边（`lib/client.js`，CJS 单文件
+`__ModuleLoader__` 工厂，banner 自动包装）：
+
 ```sh
-npm publish            # 纯 JS，无需构建
-npm pack               # 或 tarball
-git push origin main   # 或 GitHub（纯 JS 包 git 安装无需 prepare 授权）
+npm run build    # 清理 lib → tsc -b（类型 + 声明）→ tsdown（两半产物）
+npm run verify   # 模拟宿主模块表校验 lib/client.js 可加载（可选）
+npm publish      # 或 npm pack / git push origin main（lib/ 已提交，git 安装无需构建）
 ```
+
+### 自动发布（GitHub Actions）
+
+推送 `v*` tag（`npm run release` 会升级 patch 版本、重建产物并自动打标签）触发
+[`.github/workflows/publish.yml`](.github/workflows/publish.yml)：
+
+- **release job**：`npm ci` → `npm run check`（tsc -b）→
+  `npm run build`（tsc -b && tsdown）→ `npm pack` → 创建 GitHub Release
+  （自动生成 changelog，附 tarball）；
+- **publish-npm job**：发布到 npm，需要仓库配置 Secret `NPM_TOKEN`
+  （Settings → Secrets and variables → Actions），缺失时快速失败并给出提示。
+
+## 开发
+
+```sh
+npm install            # 安装 devDependencies（typescript、tsdown、@types/react、@deepseek-ai/* 类型包等）
+npm run check          # 全仓 TypeScript 类型检查（tsc -b）
+npm run build          # 修改源码后重建两半产物（tsc -b && tsdown）
+npm run watch          # tsdown 监听模式（改 src/client 自动重建）
+npm run verify         # 模拟宿主 seed 表校验 lib/client.js 可加载
+```
+
+- 宿主半边源码在 `src/host/`，浏览器半边在 `src/client/`（构建入口
+  `src/client/index.ts`，直接导出 `{ name, inject, apply }`）；
+- 浏览器半边产物 `lib/client.js` 由 tsdown 的 banner/intro/footer 生成
+  `window.__ModuleLoader__.load` 工厂包装（无需手写 wrap 脚本）；
+- 构建产物外部依赖（`react`、`@deepseek-ai/dsh-client-ui-primitives` 等）保持
+  external，运行时解析自宿主模块表（seed）。
 
 ## 实现说明
 

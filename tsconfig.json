@@ -1,0 +1,11 @@
+{
+  // Solution file: one program per side (host half vs browser half)。
+  // host 侧（Node）与浏览器侧（DOM/jsx）的编译目标不同，且各自声明合并
+  // 宿主 Context 的方式不同（见 src/host/cordis-augment.d.ts），分开 program
+  // 避免相互干扰。构建命令：tsc -b && tsdown。
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.host.json" },
+    { "path": "./tsconfig.client.json" }
+  ]
+}

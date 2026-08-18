@@ -1,6 +1,10 @@
 # 发布工作流：推送 v* tag 时触发
-# - release job：打包并直接创建 GitHub Release（非草稿），不依赖 npm 凭证
+# - release job：安装依赖 + 类型检查（tsc -b）+ 构建（tsc -b && tsdown）→ 打包并直接创建 GitHub Release（非草稿），不依赖 npm 凭证
 # - publish-npm job：发布到 npm（需要仓库 Secret：NPM_TOKEN），缺 token 时快速失败并给出明确提示
+#
+# 宿主半边构建为 lib/index.js（ESM）；浏览器半边由 tsdown 构建为 lib/client.js
+# （__ModuleLoader__ 单文件 CJS 工厂，banner 包装）。产物提交 git（git 安装无需
+# 构建），此处重建是为了保证发布内容与 tag 源码一致。
 name: Publish
 
 on:
@@ -22,8 +26,17 @@ jobs:
         with:
           node-version: 22
 
-      - name: Syntax check
-        run: node --check index.js && node --check client.js
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run check
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify bundle
+        run: npm run verify
 
       - name: Pack tarball
         run: npm pack
