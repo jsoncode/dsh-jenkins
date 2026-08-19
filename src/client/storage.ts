@@ -1,6 +1,13 @@
 /**
- * dsh-jenkins —— 浏览器半边：localStorage 存储（发布参数回显缓存 + 发布历史）。
+ * dsh-jenkins —— 浏览器半边：缓存存储（发布参数回显 + 发布历史）。
+ *
+ * 存储方式：不再使用浏览器 localStorage，统一走 DSH 官方 settings 存储——
+ * 宿主侧持久化到 $DSH_HOME/settings.yaml（dsh-jenkins 命名空间），因此无论
+ * 从哪里打开 dsh 服务（本机任意入口）都能访问同一份缓存。所有方法为异步，
+ * 经宿主命令（cacheGet / cacheSet）读写；宿主不可用时退化为内存镜像（不落盘）。
  */
+
+import type { RunFn } from './rpc.ts'
 
 export interface CachedLaunch {
   serverId?: string
@@ -13,87 +20,160 @@ export interface HistoryEntry {
   time: number
   job: string
   server: string
+  serverId?: string
+  segments?: string[]
   env?: string
   params?: Record<string, string | number | boolean>
   result?: string | null
   cwd?: string
+  /** 轮询所需：队列号（排队阶段） */
+  queueId?: number | null
+  /** 轮询所需：构建号（已开始后回填） */
+  buildNumber?: number | null
+  /** 构建页面 URL（完成后回填，供日志弹框/链接跳转） */
+  url?: string
+  /** 触发时刻（用于轮询超时判定） */
+  since?: number
+  /** 触发时的会话 id（后台轮询经 commands.execute 复用） */
+  sessionId?: string
 }
 
-/** 发布参数回显缓存（按工作区路径，浏览器 localStorage；不可用时静默降级）。 */
-const CACHE_KEY = 'dsh-jenkins.lastParams.v1'
-const readCache = (): Record<string, CachedLaunch> => {
-  try {
-    const raw = window.localStorage.getItem(CACHE_KEY)
-    return raw ? JSON.parse(raw) : {}
-  } catch (e) { return {} }
-}
-const writeCache = (cwd: string, entry: CachedLaunch): void => {
-  try {
-    const all = readCache()
-    all[cwd] = entry
-    window.localStorage.setItem(CACHE_KEY, JSON.stringify(all))
-  } catch (e) { /* ignore */ }
+interface CacheShape {
+  lastParams: Record<string, CachedLaunch>
+  history: Record<string, HistoryEntry[]>
 }
 
-/** 发布历史记录（按工作区路径，浏览器 localStorage；最近 50 条）。 */
-const HISTORY_KEY = 'dsh-jenkins.history.v1'
-const readHistory = (cwd: string): HistoryEntry[] => {
-  try {
-    const all = JSON.parse(window.localStorage.getItem(HISTORY_KEY) || '{}')
-    return Array.isArray(all[cwd]) ? all[cwd] : []
-  } catch (e) { return [] }
-}
-const writeHistory = (cwd: string, list: HistoryEntry[]): void => {
-  try {
-    const all = JSON.parse(window.localStorage.getItem(HISTORY_KEY) || '{}')
-    all[cwd] = list
-    window.localStorage.setItem(HISTORY_KEY, JSON.stringify(all))
-  } catch (e) { /* ignore */ }
-}
-const pushHistory = (cwd: string, entry: HistoryEntry): string => {
-  const list = readHistory(cwd)
-  list.unshift(entry)
-  if (list.length > 50) list.length = 50
-  writeHistory(cwd, list)
-  return entry.id
-}
-const updateHistoryResult = (cwd: string, id: string, result: string): void => {
-  const list = readHistory(cwd)
-  const hit = list.find((e) => e.id === id)
-  if (!hit) return
-  hit.result = result
-  writeHistory(cwd, list)
-}
-/** 聚合所有工作区的历史，每条附带所属工作区路径。 */
-const readAllHistory = (): HistoryEntry[] => {
-  try {
-    const all = JSON.parse(window.localStorage.getItem(HISTORY_KEY) || '{}')
-    const out: HistoryEntry[] = []
-    for (const cwd of Object.keys(all)) {
-      if (!Array.isArray(all[cwd])) continue
-      for (const e of all[cwd]) out.push(Object.assign({}, e, { cwd }))
-    }
-    return out
-  } catch (e) { return [] }
-}
-/** cwd 为 null 时清空全部工作区历史。 */
-const clearHistory = (cwd: string | null): void => {
-  try {
-    const all = JSON.parse(window.localStorage.getItem(HISTORY_KEY) || '{}')
-    if (cwd === null) { for (const k of Object.keys(all)) delete all[k] }
-    else delete all[cwd]
-    window.localStorage.setItem(HISTORY_KEY, JSON.stringify(all))
-  } catch (e) { /* ignore */ }
+const HISTORY_LIMIT = 50
+
+export interface StorageApi {
+  readCache(sessionId: string, cwd: string): Promise<CachedLaunch | null>
+  writeCache(sessionId: string, cwd: string, entry: CachedLaunch): Promise<void>
+  pushHistory(sessionId: string, cwd: string, entry: HistoryEntry): Promise<string>
+  updateHistoryResult(sessionId: string, cwd: string, id: string, result: string): Promise<void>
+  updateHistoryPoll(
+    sessionId: string,
+    cwd: string,
+    id: string,
+    patch: Partial<Pick<HistoryEntry, 'buildNumber' | 'queueId' | 'url'>>,
+  ): Promise<void>
+  readAllHistory(sessionId: string): Promise<HistoryEntry[]>
+  clearHistory(sessionId: string, cwd: string | null): Promise<void>
 }
 
-export const storage = {
-  readCache,
-  writeCache,
-  readHistory,
-  pushHistory,
-  updateHistoryResult,
-  readAllHistory,
-  clearHistory,
+export function createStorage(run: RunFn): StorageApi {
+  // 内存镜像：读时从宿主刷新，写时同步宿主（宿主不可用时的兜底，不落浏览器存储）。
+  let mirror: CacheShape = { lastParams: {}, history: {} }
+
+  const readAll = async (sessionId: string): Promise<CacheShape> => {
+    try {
+      const res = await run(sessionId, { op: 'cacheGet' })
+      if (res && res.ok && res.cache && typeof res.cache === 'object') {
+        const c = res.cache as Partial<CacheShape>
+        mirror = {
+          lastParams: c.lastParams && typeof c.lastParams === 'object'
+            ? c.lastParams as Record<string, CachedLaunch>
+            : {},
+          history: c.history && typeof c.history === 'object'
+            ? c.history as Record<string, HistoryEntry[]>
+            : {},
+        }
+      }
+    } catch { /* 宿主不可用：保留内存镜像 */ }
+    return mirror
+  }
+
+  const persist = async (sessionId: string, key: 'lastParams' | 'history'): Promise<void> => {
+    try {
+      await run(sessionId, { op: 'cacheSet', key, value: mirror[key] })
+    } catch { /* 忽略持久化失败（内存镜像仍可用） */ }
+  }
+
+  // 一次性迁移：旧版本浏览器 localStorage 数据 → 宿主存储（宿主为空时导入，随后清理 localStorage）。
+  let migrated = false
+  const migrateLegacy = async (sessionId: string): Promise<void> => {
+    if (migrated || typeof window === 'undefined') return
+    migrated = true
+    try {
+      const rawLast = window.localStorage.getItem('dsh-jenkins.lastParams.v1')
+      const rawHistory = window.localStorage.getItem('dsh-jenkins.history.v1')
+      if (!rawLast && !rawHistory) return
+      const lastParams = rawLast ? JSON.parse(rawLast) : {}
+      const history = rawHistory ? JSON.parse(rawHistory) : {}
+      if (typeof lastParams !== 'object' || lastParams === null) return
+      if (typeof history !== 'object' || history === null) return
+      const all = await readAll(sessionId)
+      const empty = Object.keys(all.lastParams).length === 0 && Object.keys(all.history).length === 0
+      if (empty) {
+        mirror = { lastParams, history }
+        await persist(sessionId, 'lastParams')
+        await persist(sessionId, 'history')
+      }
+      window.localStorage.removeItem('dsh-jenkins.lastParams.v1')
+      window.localStorage.removeItem('dsh-jenkins.history.v1')
+    } catch { /* 迁移失败不阻塞 */ }
+  }
+
+  const historyOf = (all: CacheShape, cwd: string): HistoryEntry[] => {
+    const list = all.history[cwd]
+    return Array.isArray(list) ? list : []
+  }
+
+  return {
+    readCache: async (sessionId, cwd) => {
+      await migrateLegacy(sessionId)
+      const all = await readAll(sessionId)
+      return all.lastParams[cwd] || null
+    },
+    writeCache: async (sessionId, cwd, entry) => {
+      await migrateLegacy(sessionId)
+      await readAll(sessionId)
+      mirror.lastParams[cwd] = entry
+      await persist(sessionId, 'lastParams')
+    },
+    pushHistory: async (sessionId, cwd, entry) => {
+      await migrateLegacy(sessionId)
+      const all = await readAll(sessionId)
+      const list = historyOf(all, cwd)
+      list.unshift(entry)
+      if (list.length > HISTORY_LIMIT) list.length = HISTORY_LIMIT
+      mirror.history[cwd] = list
+      await persist(sessionId, 'history')
+      return entry.id
+    },
+    updateHistoryResult: async (sessionId, cwd, id, result) => {
+      const all = await readAll(sessionId)
+      const hit = historyOf(all, cwd).find((e) => e.id === id)
+      if (!hit) return
+      hit.result = result
+      mirror.history[cwd] = historyOf(all, cwd)
+      await persist(sessionId, 'history')
+    },
+    updateHistoryPoll: async (sessionId, cwd, id, patch) => {
+      const all = await readAll(sessionId)
+      const hit = historyOf(all, cwd).find((e) => e.id === id)
+      if (!hit) return
+      if (patch.buildNumber !== undefined) hit.buildNumber = patch.buildNumber
+      if (patch.queueId !== undefined) hit.queueId = patch.queueId
+      if (patch.url !== undefined) hit.url = patch.url
+      mirror.history[cwd] = historyOf(all, cwd)
+      await persist(sessionId, 'history')
+    },
+    readAllHistory: async (sessionId) => {
+      await migrateLegacy(sessionId)
+      const all = await readAll(sessionId)
+      const out: HistoryEntry[] = []
+      for (const cwd of Object.keys(all.history)) {
+        for (const e of historyOf(all, cwd)) out.push(Object.assign({}, e, { cwd }))
+      }
+      return out
+    },
+    clearHistory: async (sessionId, cwd) => {
+      const all = await readAll(sessionId)
+      if (cwd === null) mirror.history = {}
+      else delete mirror.history[cwd]
+      await persist(sessionId, 'history')
+    },
+  }
 }
 
 /** 服务器匹配：配置里的 server（名称 / id / 地址）与已配置服务器比对（地址去尾部斜杠）。 */

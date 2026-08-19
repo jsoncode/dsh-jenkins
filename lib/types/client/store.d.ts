@@ -1,5 +1,8 @@
 /**
- * dsh-jenkins —— 浏览器半边：弹框开关（footer 按钮 ↔ overlay 弹框共享）。
+ * dsh-jenkins —— 浏览器半边：统一「Jenkins 配置」弹框开关（footer 入口 ↔ overlay 弹框共享）。
+ *
+ * 入口与弹框合并为单一弹框（tab：发布 / 配置 / 历史）后，不再需要独立的
+ * 发布（LaunchInfo）与历史（cwd）store —— 弹框内自行按当前工作区推导数据。
  */
 export interface LaunchInfo {
     cwd: string;
@@ -20,15 +23,11 @@ interface StoreState<T> {
     open(value: T): void;
     close(): void;
 }
-export interface LaunchStore {
-    store: StoreState<LaunchInfo>;
-    useLaunch(): LaunchInfo | null;
+export interface ConfigModalStore {
+    store: StoreState<boolean>;
+    useOpen(): boolean;
 }
-export interface HistoryStore {
-    store: StoreState<string>;
-    useLaunch(): string | null;
-}
-export declare function makeLaunchStore(): LaunchStore;
-export declare function makeHistoryStore(): HistoryStore;
+/** 统一「Jenkins 配置」弹框的打开状态（footer 入口 open，overlay 弹框消费）。 */
+export declare function makeConfigModalStore(): ConfigModalStore;
 export {};
 //# sourceMappingURL=store.d.ts.map

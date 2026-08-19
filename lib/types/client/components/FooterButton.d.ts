@@ -1,29 +1,18 @@
 /**
  * dsh-jenkins —— 侧边栏底部入口（sidebar.footer.action）：
- * 当前工作区根目录存在 dsh-Jenkins 配置时显示，点击打开「执行 Jenkins Job」弹框。
+ * 常驻的「Jenkins 配置」按钮（位于 dsh 配置按钮上方的 footer.action 区），
+ * 点击打开统一弹框（发布 / 配置 / 历史 三个 tab）。不再按工作区配置门控 ——
+ * 服务器配置入口本就应随时可达。
  */
-import type { RunFn } from '../rpc.ts';
-import type { LaunchInfo } from '../store.ts';
-type WorkspaceItem = {
-    path?: string;
-    sessionIds?: string[];
-};
 export interface FooterButtonProps {
-    run: RunFn;
-    launchStore: {
-        open(launch: LaunchInfo): void;
-    };
-    historyStore: {
-        open(cwd: string): void;
-    };
+    /** 打开统一「Jenkins 配置」弹框。 */
+    onOpen(): void;
+    /** 上报当前会话 id（供全局轮询 / 历史读取复用宿主命令）。 */
+    reportSession?: (sessionId: string) => void;
     wide?: boolean;
-    useWorkspaces?: (selector: (s: {
-        items?: WorkspaceItem[];
-    }) => unknown) => unknown;
     useSessions?: (selector: (s: {
         current?: string;
     }) => unknown) => unknown;
 }
-export declare function FooterButton({ run, launchStore, historyStore, wide, useWorkspaces, useSessions }: FooterButtonProps): import("react").JSX.Element | null;
-export {};
+export declare function FooterButton({ onOpen, reportSession, wide, useSessions }: FooterButtonProps): import("react").JSX.Element;
 //# sourceMappingURL=FooterButton.d.ts.map

@@ -1,6 +1,12 @@
 /**
- * dsh-jenkins —— 浏览器半边：localStorage 存储（发布参数回显缓存 + 发布历史）。
+ * dsh-jenkins —— 浏览器半边：缓存存储（发布参数回显 + 发布历史）。
+ *
+ * 存储方式：不再使用浏览器 localStorage，统一走 DSH 官方 settings 存储——
+ * 宿主侧持久化到 $DSH_HOME/settings.yaml（dsh-jenkins 命名空间），因此无论
+ * 从哪里打开 dsh 服务（本机任意入口）都能访问同一份缓存。所有方法为异步，
+ * 经宿主命令（cacheGet / cacheSet）读写；宿主不可用时退化为内存镜像（不落盘）。
  */
+import type { RunFn } from './rpc.ts';
 export interface CachedLaunch {
     serverId?: string;
     jobPath?: string;
@@ -11,20 +17,33 @@ export interface HistoryEntry {
     time: number;
     job: string;
     server: string;
+    serverId?: string;
+    segments?: string[];
     env?: string;
     params?: Record<string, string | number | boolean>;
     result?: string | null;
     cwd?: string;
+    /** 轮询所需：队列号（排队阶段） */
+    queueId?: number | null;
+    /** 轮询所需：构建号（已开始后回填） */
+    buildNumber?: number | null;
+    /** 构建页面 URL（完成后回填，供日志弹框/链接跳转） */
+    url?: string;
+    /** 触发时刻（用于轮询超时判定） */
+    since?: number;
+    /** 触发时的会话 id（后台轮询经 commands.execute 复用） */
+    sessionId?: string;
 }
-export declare const storage: {
-    readCache: () => Record<string, CachedLaunch>;
-    writeCache: (cwd: string, entry: CachedLaunch) => void;
-    readHistory: (cwd: string) => HistoryEntry[];
-    pushHistory: (cwd: string, entry: HistoryEntry) => string;
-    updateHistoryResult: (cwd: string, id: string, result: string) => void;
-    readAllHistory: () => HistoryEntry[];
-    clearHistory: (cwd: string | null) => void;
-};
+export interface StorageApi {
+    readCache(sessionId: string, cwd: string): Promise<CachedLaunch | null>;
+    writeCache(sessionId: string, cwd: string, entry: CachedLaunch): Promise<void>;
+    pushHistory(sessionId: string, cwd: string, entry: HistoryEntry): Promise<string>;
+    updateHistoryResult(sessionId: string, cwd: string, id: string, result: string): Promise<void>;
+    updateHistoryPoll(sessionId: string, cwd: string, id: string, patch: Partial<Pick<HistoryEntry, 'buildNumber' | 'queueId' | 'url'>>): Promise<void>;
+    readAllHistory(sessionId: string): Promise<HistoryEntry[]>;
+    clearHistory(sessionId: string, cwd: string | null): Promise<void>;
+}
+export declare function createStorage(run: RunFn): StorageApi;
 /** 服务器匹配：配置里的 server（名称 / id / 地址）与已配置服务器比对（地址去尾部斜杠）。 */
 export declare const normServerUrl: (u: string) => string;
 export declare function matchServer(s: {
