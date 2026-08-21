@@ -149,11 +149,11 @@ export function ServerEditorModal({ run, sessionId, server, onSaved, onClose }: 
           </div>
           {formError ? <div className="dshj-err">{formError}</div> : null}
           {testResult ? <div className={'dshj-result ' + (testResult.ok ? 'dshj-ok' : 'dshj-err')}>{testResult.text}</div> : null}
-          <div className="dshj-editor-ops">
-            <button type="button" className={'dshj-btn' + (testedOk ? ' dshj-btn-success' : '')} disabled={busy} onClick={doTest}>{busy ? t('testing') : t('testBtn')}</button>
-            <button type="button" className="dshj-btn dshj-btn-primary" disabled={busy} onClick={doSave}>{t('saveBtn')}</button>
-            <button type="button" className="dshj-btn" disabled={busy} onClick={onClose}>{t('cancelBtn')}</button>
-          </div>
+        </div>
+        <div className="dshj-modal-footer">
+          <button type="button" className={'dshj-btn' + (testedOk ? ' dshj-btn-success' : '')} disabled={busy} onClick={doTest}>{busy ? t('testing') : t('testBtn')}</button>
+          <button type="button" className="dshj-btn" disabled={busy} onClick={onClose}>{t('cancelBtn')}</button>
+          <button type="button" className="dshj-btn dshj-btn-primary" disabled={busy} onClick={doSave}>{t('saveBtn')}</button>
         </div>
       </div>
     </div>
