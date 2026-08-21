@@ -1,5 +1,5 @@
 /**
- * dsh-jenkins —— 配置模板内联区（js / ts / json Tab，置于表单上方）。
+ * dsh-jenkins —— 配置模板内容区（json / js / ts Tab），供「项目配置」弹框展示。
  */
 
 import { useState } from 'react'

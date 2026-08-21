@@ -13,7 +13,8 @@ import { fmtDur, LANG, t, tErr } from '../i18n.ts'
 import { matchServer, type CachedLaunch, type StorageApi } from '../storage.ts'
 import type { RunFn } from '../rpc.ts'
 import type { Poller } from '../poller.ts'
-import { PickerModal, type PickerOption } from './PickerModal.tsx'
+import { ServerEditorModal } from './ServerEditorModal.tsx'
+import { InlineSelect, type InlineSelectOption } from './InlineSelect.tsx'
 
 interface Server {
   id: string
@@ -77,9 +78,10 @@ export interface PublishTabProps {
   poller: Poller
   storage: StorageApi
   workspaceItems: WorkspaceItem[]
+  onCountChange?: (count: number) => void
 }
 
-export function PublishTab({ initialCwd, sessionId, run, poller, storage, workspaceItems }: PublishTabProps) {
+export function PublishTab({ initialCwd, sessionId, run, poller, storage, workspaceItems, onCountChange }: PublishTabProps) {
   // 项目列表：工作区路径（去空、去重、保持顺序）
   const paths = [...new Set((Array.isArray(workspaceItems) ? workspaceItems : [])
     .map((w) => (w && typeof w.path === 'string' ? w.path : ''))
@@ -88,8 +90,6 @@ export function PublishTab({ initialCwd, sessionId, run, poller, storage, worksp
     if (initialCwd && paths.indexOf(initialCwd) !== -1) return initialCwd
     return paths.length ? paths[0] : ''
   })
-  const [projectPickOpen, setProjectPickOpen] = useState(false)
-  const [projectPickSearch, setProjectPickSearch] = useState('')
   // 所选项目的 dsh-jenkins 配置（可选）：存在则启用配置增强；不存在不阻塞发布。
   const [config, setConfig] = useState<WorkspaceConfig | null>(null)
   useEffect(() => {
@@ -108,45 +108,29 @@ export function PublishTab({ initialCwd, sessionId, run, poller, storage, worksp
     <>
       <div className="dshj-server-field">
         <label className="dshj-server-label">{t('projectField')}</label>
-        {/* 与「Job 列表」同款选择按钮：右侧恒为同一按钮（高度恒定），点击打开搜索选择弹框 */}
-        <button
-          type="button"
-          className={'dshj-picker' + (project ? '' : ' dshj-picker-empty')}
+        {/* antd Select 风格：点击直接展开下拉面板，顶部搜索框输入即过滤 */}
+        <InlineSelect
+          value={project}
+          placeholder={paths.length === 0 ? t('noWorkspacesHint') : t('projectPlaceholder')}
+          searchPlaceholder={t('pickerSearchPlaceholder')}
+          options={paths.map((p): InlineSelectOption => ({ id: p, label: p }))}
           disabled={paths.length === 0}
-          onClick={() => { setProjectPickSearch(''); setProjectPickOpen(true) }}
-        >
-          <span className="dshj-picker-value">
-            {project ? project : paths.length === 0 ? t('noWorkspacesHint') : t('projectPlaceholder')}
-          </span>
-          <span className="dshj-picker-caret">▾</span>
-        </button>
-        <PickerModal
-          open={projectPickOpen}
-          title={t('projectField')}
-          search={projectPickSearch}
-          setSearch={setProjectPickSearch}
-          placeholder={t('projectPlaceholder')}
-          options={paths
-            .filter((p) => p.toLowerCase().indexOf(projectPickSearch.toLowerCase()) !== -1)
-            .map((p): PickerOption => ({ id: p, label: p }))}
-          selectedId={project || undefined}
-          emptyText={paths.length === 0 ? t('noWorkspacesHint') : undefined}
-          onSelect={(id) => { setProject(id); setProjectPickOpen(false) }}
-          onClose={() => setProjectPickOpen(false)}
+          onChange={(id) => setProject(id)}
         />
       </div>
-      <LauncherContent cwd={project} sessionId={sessionId} config={config} run={run} poller={poller} storage={storage} />
+      <LauncherContent cwd={project} sessionId={sessionId} config={config} run={run} poller={poller} storage={storage} onCountChange={onCountChange} />
     </>
   )
 }
 
-function LauncherContent({ cwd, sessionId, config, run, poller, storage }: {
+function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCountChange }: {
   cwd: string
   sessionId: string
   config: WorkspaceConfig | null
   run: RunFn
   poller: Poller
   storage: StorageApi
+  onCountChange?: (count: number) => void
 }) {
   // 配置数组：每个元素 = { job, server, parameters }（server 即发布目标/环境标识）
   const entries = config && Array.isArray(config.entries) ? config.entries : []
@@ -168,6 +152,8 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage }: {
   const [serverPool, setServerPool] = useState<Server[]>([]) // 下拉候选：配置交集（交集为空或未配置时退化为全部服务器）
   const [serverMismatch, setServerMismatch] = useState<string[]>([]) // 配置里未匹配到的服务器标识
   const [selectedServerId, setSelectedServerId] = useState('')
+  const [addServerOpen, setAddServerOpen] = useState(false) // 「去添加」新增服务器弹框
+  const [serverReloadKey, setServerReloadKey] = useState(0) // 新增服务器保存成功后重新加载列表
   const [detail, setDetail] = useState<{ params?: ParamDef[]; nextBuildNumber?: number | null } | null>(null) // 服务端任务参数定义
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState('')
@@ -176,8 +162,6 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage }: {
   const [jobsError, setJobsError] = useState('')
   const [selectedJobPath, setSelectedJobPath] = useState('')
   const [jobSearch, setJobSearch] = useState('')
-  const [jobPickOpen, setJobPickOpen] = useState(false)
-  const [jobPickSearch, setJobPickSearch] = useState('')
   const [paramsOpen, setParamsOpen] = useState(false) // 查看表单参数 JSON 弹框
 
   const selectedServer = servers.find((s) => s.id === selectedServerId) || null
@@ -193,6 +177,7 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage }: {
       if (!alive) return
       const list = (r && r.ok) ? ((r.servers as Server[]) || []) : []
       setServers(list)
+      if (onCountChange) onCountChange(list.length)
       const matched = configServerRefs.length ? list.filter((s) => configServerRefs.some((ref) => matchServer(s, ref))) : []
       const unmatched = configServerRefs.filter((ref) => !list.some((s) => matchServer(s, ref)))
       const pool = matched.length ? matched : list
@@ -204,7 +189,7 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage }: {
       setSelectedServerId(preferred ? preferred.id : '')
     }).catch(() => { if (alive) setServers([]) })
     return () => { alive = false }
-  }, [cached, config])
+  }, [cached, config, serverReloadKey])
 
   // 按所选服务器拉取真实 Job 列表（排除文件夹）；配置里该服务器对应的 job 若存在则预选
   // （缓存上次使用的 Job 优先；配置里没有匹配的 job 时留空由用户选择）。
@@ -417,20 +402,31 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage }: {
     <>
       <div className="dshj-server-field">
         <label className="dshj-server-label">{t('serverField')}</label>
-        {/* 恒为 select（空态用禁用占位选项），避免服务器列表返回时行高变化；
-            候选 = 配置交集（无配置或交集为空时退化为全部服务器），带「（配置）」标记提示哪些被项目配置引用 */}
-        <select
-          className="dshj-select"
-          value={selectedServerId}
-          disabled={!!runState || submitting || serverPool.length === 0}
-          onChange={(e) => setSelectedServerId(e.target.value)}
-        >
-          {serverPool.length === 0
-            ? <option key="__none" value="" disabled>{t('noServersHint')}</option>
-            : serverPool.map((s) => (
-                <option key={s.id} value={s.id}>{s.name + (configServerRefs.some((ref) => matchServer(s, ref)) ? t('configMark') : '')}</option>
-              ))}
-        </select>
+        <div className="dshj-server-ctrl">
+          {/* 与「项目」同款内联下拉：候选 = 配置交集（无配置或交集为空时退化为全部服务器），
+              带「（配置）」标记提示哪些被项目配置引用；空态禁用并显示提示 */}
+          <InlineSelect
+            value={selectedServerId}
+            placeholder={t('noServersHint')}
+            searchPlaceholder={t('pickerSearchPlaceholder')}
+            options={serverPool.map((s): InlineSelectOption => ({
+              id: s.id,
+              label: s.name + (configServerRefs.some((ref) => matchServer(s, ref)) ? t('configMark') : ''),
+            }))}
+            disabled={!!runState || submitting || serverPool.length === 0}
+            onChange={(id) => setSelectedServerId(id)}
+          />
+          {/* 未配置服务器时可直接打开「新增服务器」弹框，保存后自动刷新本列表 */}
+          <button
+            type="button"
+            className="dshj-btn dshj-btn-small"
+            title={t('goAdd')}
+            disabled={!!runState || submitting}
+            onClick={() => setAddServerOpen(true)}
+          >
+            {t('goAdd')}
+          </button>
+        </div>
       </div>
       {serverMismatch.length > 0 ? (
         <div className="dshj-server-field">
@@ -440,38 +436,27 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage }: {
       ) : null}
       <div className="dshj-server-field">
         <label className="dshj-server-label">{t('jobField')}</label>
-        {/* 右侧始终渲染同一个选择按钮（高度恒定），加载/出错/空态的状态文本显示在按钮内 */}
-        <button
-          type="button"
-          className={'dshj-picker' + (jobSearch ? '' : ' dshj-picker-empty') + (jobsError ? ' dshj-picker-error' : '')}
-          disabled={!!runState || submitting || jobsLoading || !selectedServer}
-          onClick={() => { setJobPickSearch(''); setJobPickOpen(true) }}
-        >
-          <span className="dshj-picker-value">
-            {jobSearch
-              ? jobSearch
-              : !selectedServer ? t('jobPlaceholder')
-                : jobsLoading ? t('jobsLoading')
-                  : jobsError ? t('jobsFailed')
-                    : jobs.length === 0 ? t('jobsEmpty')
-                      : t('jobPlaceholder')}
-          </span>
-          <span className="dshj-picker-caret">▾</span>
-        </button>
-        <PickerModal
-          open={jobPickOpen}
-          title={t('jobField')}
-          search={jobPickSearch}
-          setSearch={setJobPickSearch}
-          placeholder={t('jobPlaceholder')}
-          options={jobs
-            .filter((j) => !j.folder && (j.path.toLowerCase().indexOf(jobPickSearch.toLowerCase()) !== -1 || j.name.toLowerCase().indexOf(jobPickSearch.toLowerCase()) !== -1))
-            .map((j): PickerOption => ({ id: j.path, label: j.path }))}
-          selectedId={selectedJobPath || undefined}
-          emptyText={jobsError ? t('jobsFailed') : jobs.length === 0 ? t('jobsEmpty') : undefined}
-          onSelect={(id) => { setSelectedJobPath(id); setJobSearch(id); setJobPickOpen(false) }}
-          onClose={() => setJobPickOpen(false)}
-        />
+        <div className="dshj-server-ctrl">
+          {/* 与服务器同款内联下拉：加载/出错/空态的状态文本显示在触发器中 */}
+          <InlineSelect
+            value={selectedJobPath}
+            placeholder={!selectedServer ? t('jobPlaceholder')
+              : jobsLoading ? t('jobsLoading')
+                : jobsError ? t('jobsFailed')
+                  : jobs.length === 0 ? t('jobsEmpty')
+                    : t('jobPlaceholder')}
+            searchPlaceholder={t('jobPlaceholder')}
+            emptyText={jobsError ? t('jobsFailed') : t('jobsEmpty')}
+            options={jobs
+              .filter((j) => !j.folder)
+              .map((j): InlineSelectOption => ({ id: j.path, label: j.path }))}
+            disabled={!!runState || submitting || jobsLoading || !selectedServer}
+            onChange={(id) => { setSelectedJobPath(id); setJobSearch(id) }}
+          />
+          {selectedServer && !jobsLoading && !jobsError ? (
+            <span className="dshj-job-count">{t('jobCount', { n: jobs.length })}</span>
+          ) : null}
+        </div>
       </div>
       {/* 「Job 列表」下方的虚线分割线：分隔上方的选择区与下方的参数表单 */}
       <div className="dshj-divider" />
@@ -523,9 +508,12 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage }: {
                             )
                           } else if (p && p.type === 'choice') {
                             control = (
-                              <select className="dshj-select" value={String(v)} onChange={(e) => set(e.target.value)}>
-                                {(p.choices || []).map((c) => <option key={String(c)} value={String(c)}>{String(c)}</option>)}
-                              </select>
+                              <InlineSelect
+                                value={String(v)}
+                                searchPlaceholder={t('pickerSearchPlaceholder')}
+                                options={(p.choices || []).map((c): InlineSelectOption => ({ id: String(c), label: String(c) }))}
+                                onChange={(id) => set(id)}
+                              />
                             )
                           } else if (p && p.type === 'text') {
                             control = <textarea className="dshj-textarea" rows={3} value={String(v === undefined || v === null ? '' : v)} onChange={(e) => set(e.target.value)} />
@@ -581,6 +569,15 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage }: {
             </div>
           </div>
         </div>
+      ) : null}
+      {addServerOpen ? (
+        <ServerEditorModal
+          run={run}
+          sessionId={sessionId}
+          server={null}
+          onSaved={() => setServerReloadKey((k) => k + 1)}
+          onClose={() => setAddServerOpen(false)}
+        />
       ) : null}
     </>
   )

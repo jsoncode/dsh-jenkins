@@ -17,7 +17,7 @@ import {
   normalizeBase,
 } from './jenkins.ts'
 import { loadWorkspaceConfig } from './workspace-config.ts'
-import type { FsService, OpRequest, OpResult, PublicServer, ServerConfig, ShellService } from './types.ts'
+import type { FsService, HttpResponse, OpRequest, OpResult, PublicServer, ServerConfig, ShellService } from './types.ts'
 
 export interface OpsDeps {
   ctx: HostCtxLike
@@ -44,6 +44,7 @@ const publicServer = (s: ServerConfig): PublicServer => ({
   tokenMasked: maskToken(s.token),
   hasToken: !!s.token,
   insecure: !!s.insecure,
+  verified: !!s.verified,
 })
 
 /** 把异常/消息映射为本地化错误码（客户端按 code 显示中/英文）。 */
@@ -159,8 +160,9 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
     const token = String(a.token || '').trim()
     if (!/^https?:\/\//i.test(baseUrl)) return { ok: false, code: 'url-invalid', error: 'Server URL must start with http:// or https://' }
     if (!token) return { ok: false, code: 'token-required', error: 'Token is required' }
-    // 名称选填（缺省用地址主机名），用户名选填（缺省 admin）。
-    const name = String(a.name || '').trim() || (baseUrl.replace(/^https?:\/\//i, '').split('/')[0] || baseUrl)
+    if (!username) return { ok: false, code: 'username-required', error: 'Username is required' }
+    // 名称选填（缺省用服务器地址），用户名必填。
+    const name = String(a.name || '').trim() || baseUrl
     // readServers 返回 JSON.parse 结果（可变），可安全增改。
     const servers = readServers()
     if (a.id) {
@@ -170,6 +172,8 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
       s.baseUrl = baseUrl
       s.username = username
       s.insecure = !!a.insecure
+      // 配置已变化：清除已验证状态，需重新测试连接
+      s.verified = false
       if (token) s.token = token
     } else {
       servers.push({
@@ -201,12 +205,31 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
     if (!baseUrl || !token) return { ok: false, code: 'fields-missing', error: 'Server URL and Token are required' }
     const insecure = a.insecure !== undefined ? !!a.insecure : (stored ? !!stored.insecure : false)
     const server = { baseUrl, username: username || 'admin', token, insecure }
-    const r = await jenkinsRequest(ctx, server, '/api/json')
-    if (r.status === 401) return { ok: false, code: 'auth-failed', error: 'Authentication failed: wrong username or Token (HTTP 401)' }
-    if (r.status === 403) return { ok: false, code: 'forbidden', error: 'Permission denied (HTTP 403)' }
-    if (r.status >= 400) return { ok: false, code: 'connect-failed', error: 'Connection failed (HTTP ' + r.status + ')' }
+    // 记录已验证状态（仅针对已保存的服务器）：测试成功置位、失败清除，持久化到服务器配置。
+    // 注意：readServers() 每次调用都会重新 JSON.parse 返回新对象数组，
+    // 必须在同一次读取的数组上修改并写回，跨调用修改旧引用会导致写盘丢失。
+    const persistVerified = async (v: boolean): Promise<void> => {
+      if (!stored) return
+      const servers = readServers()
+      const target = servers.find((s) => s.id === stored.id)
+      if (target) {
+        target.verified = v
+        await writeServers(servers)
+      }
+    }
+    let r: HttpResponse
+    try {
+      r = await jenkinsRequest(ctx, server, '/api/json')
+    } catch (e) {
+      await persistVerified(false)
+      return { ok: false, code: errCodeOf(e) || 'network-failed', error: e instanceof Error ? e.message : String(e) }
+    }
+    if (r.status === 401) { await persistVerified(false); return { ok: false, code: 'auth-failed', error: 'Authentication failed: wrong username or Token (HTTP 401)' } }
+    if (r.status === 403) { await persistVerified(false); return { ok: false, code: 'forbidden', error: 'Permission denied (HTTP 403)' } }
+    if (r.status >= 400) { await persistVerified(false); return { ok: false, code: 'connect-failed', error: 'Connection failed (HTTP ' + r.status + ')' } }
     let data: { version?: string; nodeName?: string } | null = null
     try { data = JSON.parse(r.body || '{}') } catch { /* ignore */ }
+    await persistVerified(true)
     return { ok: true, version: data && data.version ? data.version : '', nodeName: data && data.nodeName ? data.nodeName : '' }
   }
 

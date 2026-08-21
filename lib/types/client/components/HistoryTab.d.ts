@@ -12,11 +12,7 @@ export interface HistoryTabProps {
     run: RunFn;
     poller: Poller;
     storage: StorageApi;
-    useWorkspaces?: (selector: (s: {
-        items?: Array<{
-            path?: string;
-        }>;
-    }) => unknown) => unknown;
+    onCountChange?: (count: number) => void;
 }
-export declare function HistoryTab({ cwd, sessionId, run, poller, storage, useWorkspaces }: HistoryTabProps): import("react").JSX.Element;
+export declare function HistoryTab({ cwd, sessionId, run, poller, storage, onCountChange }: HistoryTabProps): import("react").JSX.Element;
 //# sourceMappingURL=HistoryTab.d.ts.map

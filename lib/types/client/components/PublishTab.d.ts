@@ -23,6 +23,7 @@ export interface PublishTabProps {
     poller: Poller;
     storage: StorageApi;
     workspaceItems: WorkspaceItem[];
+    onCountChange?: (count: number) => void;
 }
-export declare function PublishTab({ initialCwd, sessionId, run, poller, storage, workspaceItems }: PublishTabProps): import("react").JSX.Element;
+export declare function PublishTab({ initialCwd, sessionId, run, poller, storage, workspaceItems, onCountChange }: PublishTabProps): import("react").JSX.Element;
 //# sourceMappingURL=PublishTab.d.ts.map

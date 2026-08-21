@@ -8,6 +8,8 @@ export interface ServerConfig {
     username: string;
     token: string;
     insecure?: boolean;
+    /** 最近一次测试连接是否通过（持久化；编辑保存后清除，需重新测试）。 */
+    verified?: boolean;
 }
 /** 对外（浏览器侧）暴露的服务器视图：Token 掩码，不含明文。 */
 export interface PublicServer {
@@ -18,6 +20,7 @@ export interface PublicServer {
     tokenMasked: string;
     hasToken: boolean;
     insecure: boolean;
+    verified: boolean;
 }
 /** 发起 Jenkins 请求所需的最小服务器视图（未持久化的测试连接也适用）。 */
 export interface JenkinsServerLike {

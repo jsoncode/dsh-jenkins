@@ -2,14 +2,14 @@
  * dsh-jenkins —— 统一「Jenkins 配置」弹框（shell.overlay）：
  * 侧边栏底部「Jenkins 配置」入口打开的单一弹框，三个 tab：
  * - 发布：原「执行 Jenkins Job」弹框内容（服务器 / Job / 参数 / 触发 / 轮询状态）；
- * - 配置：原设置页内容（服务器管理：增删改查 / 测试连接 / 模板）；
+ * - 配置：原设置页内容（服务器管理：增删改查 / 测试连接 / 项目配置弹框）；
  * - 历史：原「发布历史」弹框内容（按工作区筛选 / 查看构建日志 / 清空）。
  *
  * 当前工作区（cwd）与会话 id 由宿主 overlay 的 useWorkspaces / useSessions 推导，
  * 三个 tab 共享同一份上下文。
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { t } from '../i18n.ts'
 import type { RunFn } from '../rpc.ts'
 import type { Poller } from '../poller.ts'
@@ -42,6 +42,8 @@ const TABS: Array<{ id: ConfigTab; label: string }> = [
 export function JenkinsConfigModal({ run, poller, storage, useOpen, close, useWorkspaces, useSessions }: JenkinsConfigModalProps) {
   const open = useOpen()
   const [tab, setTab] = useState<ConfigTab>('publish')
+  const [configCount, setConfigCount] = useState(0) // 「配置」tab：已配置服务器数
+  const [historyCount, setHistoryCount] = useState(0) // 「历史」tab：发布历史条数
   const workspaceItems = useWorkspaces
     ? (useWorkspaces((s) => (s && s.items) || []) as WorkspaceItem[])
     : []
@@ -55,9 +57,17 @@ export function JenkinsConfigModal({ run, poller, storage, useOpen, close, useWo
     const current = list.find((w) => Array.isArray(w.sessionIds) && w.sessionIds.indexOf(currentSessionId as string) !== -1)
     return (current && current.path) || (list.length ? list[0].path : null) || ''
   }, [workspaceItems, currentSessionId])
+  // 打开弹框即预加载两个 tab 的计数（未切换到对应 tab 时胶囊也有数字）
+  useEffect(() => {
+    run(sessionId, { op: 'list' }).then((r) => {
+      if (r && r.ok) setConfigCount(((r.servers as unknown[]) || []).length)
+    }).catch(() => { })
+    void storage.readAllHistory(sessionId).then((h) => setHistoryCount((h || []).length)).catch(() => { })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
   if (!open) return null
   return (
-    <div className="dshj-backdrop" onClick={close}>
+    <div className="dshj-backdrop">
       <div className="dshj-modal dshj-config-modal" onClick={(e) => e.stopPropagation()}>
         <div className="dshj-modal-header">
           <div>
@@ -67,40 +77,39 @@ export function JenkinsConfigModal({ run, poller, storage, useOpen, close, useWo
           <button type="button" className="dshj-close" aria-label={t('close')} title={t('close')} onClick={close}>✕</button>
         </div>
         <div className="dshj-tabs" role="tablist">
-          {TABS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              aria-selected={tab === item.id}
-              className={'dshj-tab' + (tab === item.id ? ' dshj-tab-active' : '')}
-              onClick={() => setTab(item.id)}
-            >
-              {item.label}
-            </button>
-          ))}
+          {TABS.map((item) => {
+            const count = item.id === 'config' ? configCount : item.id === 'history' ? historyCount : 0
+            return (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                aria-selected={tab === item.id}
+                className={'dshj-tab' + (tab === item.id ? ' dshj-tab-active' : '')}
+                onClick={() => setTab(item.id)}
+              >
+                {item.label}
+                {count > 0 ? <span className="dshj-badge">{count}</span> : null}
+              </button>
+            )
+          })}
         </div>
         <div className="dshj-modal-body dshj-config-body">
           {tab === 'publish' ? (
             <ErrorBoundary label="PublishTab">
-              <PublishTab initialCwd={cwd} sessionId={sessionId} run={run} poller={poller} storage={storage} workspaceItems={workspaceItems} />
+              <PublishTab initialCwd={cwd} sessionId={sessionId} run={run} poller={poller} storage={storage} workspaceItems={workspaceItems} onCountChange={setConfigCount} />
             </ErrorBoundary>
           ) : tab === 'config' ? (
             <ErrorBoundary label="SettingsPage">
-              <SettingsPage run={run} sessionId={sessionId} />
+              <SettingsPage run={run} sessionId={sessionId} onCountChange={setConfigCount} />
             </ErrorBoundary>
           ) : (
             <ErrorBoundary label="HistoryTab">
-              <HistoryTab cwd={cwd} sessionId={sessionId} run={run} poller={poller} storage={storage} useWorkspaces={useWorkspaces as HistoryTabWorkspaceHooks['useWorkspaces']} />
+              <HistoryTab cwd={cwd} sessionId={sessionId} run={run} poller={poller} storage={storage} onCountChange={setHistoryCount} />
             </ErrorBoundary>
           )}
         </div>
       </div>
     </div>
   )
-}
-
-/** history tab 宿主注入的 hooks 形状。 */
-interface HistoryTabWorkspaceHooks {
-  useWorkspaces(selector: (s: { items?: Array<{ path?: string }> }) => unknown): unknown
 }

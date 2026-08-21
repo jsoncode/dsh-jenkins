@@ -10,7 +10,7 @@ import { type HistoryEntry, type StorageApi } from '../storage.ts'
 import type { RunFn } from '../rpc.ts'
 import type { Poller } from '../poller.ts'
 import { BuildLogModal } from './BuildLogModal.tsx'
-import { PickerModal, type PickerOption } from './PickerModal.tsx'
+import { InlineSelect, type InlineSelectOption } from './InlineSelect.tsx'
 
 export interface HistoryTabProps {
   cwd: string
@@ -18,23 +18,18 @@ export interface HistoryTabProps {
   run: RunFn
   poller: Poller
   storage: StorageApi
-  useWorkspaces?: (selector: (s: { items?: Array<{ path?: string }> }) => unknown) => unknown
+  onCountChange?: (count: number) => void
 }
 
-export function HistoryTab({ cwd, sessionId, run, poller, storage, useWorkspaces }: HistoryTabProps) {
-  const workspaceItems = useWorkspaces && typeof useWorkspaces === 'function'
-    ? (useWorkspaces((s) => (s && s.items) || []) as Array<{ path?: string }>)
-    : []
-  const realPaths = (Array.isArray(workspaceItems) ? workspaceItems : [])
-    .map((w) => (w && typeof w.path === 'string' ? w.path : null))
-    .filter((p): p is string => !!p)
+export function HistoryTab({ cwd, sessionId, run, poller, storage, onCountChange }: HistoryTabProps) {
   const [filter, setFilter] = useState('all')
   const [list, setList] = useState<HistoryEntry[]>([]) // 全量历史（每条含 cwd）
   const [logTarget, setLogTarget] = useState<HistoryEntry | null>(null)
-  const [wsPickOpen, setWsPickOpen] = useState(false)
-  const [wsPickSearch, setWsPickSearch] = useState('')
   const reload = (): void => {
-    void storage.readAllHistory(sessionId).then(setList).catch(() => undefined)
+    void storage.readAllHistory(sessionId).then((h) => {
+      setList(h)
+      if (onCountChange) onCountChange((h || []).length)
+    }).catch(() => undefined)
   }
   // 全局轮询器每次回填结果后刷新列表（进行中 → 完成实时可见）
   useEffect(() => poller.subscribe(reload), [poller, storage, sessionId])
@@ -44,11 +39,10 @@ export function HistoryTab({ cwd, sessionId, run, poller, storage, useWorkspaces
     // 需要在此被发现并恢复后台轮询，否则列表会一直停在「进行中」。
     poller.refresh()
   }, [cwd, storage, sessionId, poller])
-  // 工作区选项：真实工作区 + 有历史记录的路径（去重排序），外加「全部」
-  const wsPaths = [...new Set([...realPaths, ...list.map((e) => e.cwd).filter((p): p is string => !!p)])].sort()
+  // 工作区选项：仅列出曾经发布过的记录里的工作区（去重排序），外加「全部」
+  const wsPaths = [...new Set(list.map((e) => e.cwd).filter((p): p is string => !!p))].sort()
   const wsOptions = [{ id: 'all', label: t('historyAll') }].concat(wsPaths.map((p) => ({ id: p, label: p })))
   const filtered = filter === 'all' ? list : list.filter((e) => e.cwd === filter)
-  const filterLabel = filter === 'all' ? t('historyAll') : filter
   const fmtTime = (ts: number): string => {
     try { return new Date(ts).toLocaleString() } catch (e) { return String(ts) }
   }
@@ -64,28 +58,13 @@ export function HistoryTab({ cwd, sessionId, run, poller, storage, useWorkspaces
     <>
       <div className="dshj-server-field dshj-history-ws-field">
         <label className="dshj-server-label">{t('historyWsField')}</label>
-        {/* 与「Job 列表」同款选择按钮：点击打开搜索选择弹框 */}
-        <button
-          type="button"
-          className={'dshj-picker' + (filter === 'all' ? ' dshj-picker-empty' : '')}
-          onClick={() => { setWsPickSearch(''); setWsPickOpen(true) }}
-        >
-          <span className="dshj-picker-value">{filterLabel}</span>
-          <span className="dshj-picker-caret">▾</span>
-        </button>
-        <PickerModal
-          open={wsPickOpen}
-          title={t('historyWsField')}
-          search={wsPickSearch}
-          setSearch={setWsPickSearch}
+        {/* 与「发布」tab 同款内联下拉：可直接搜索工作区路径 */}
+        <InlineSelect
+          value={filter}
           placeholder={t('historyWsPlaceholder')}
-          options={wsOptions
-            .filter((o) => o.label.toLowerCase().indexOf(wsPickSearch.toLowerCase()) !== -1)
-            .map((o): PickerOption => ({ id: o.id, label: o.label }))}
-          selectedId={filter}
-          emptyText={undefined}
-          onSelect={(id) => { setFilter(id); setWsPickOpen(false) }}
-          onClose={() => setWsPickOpen(false)}
+          searchPlaceholder={t('historyWsPlaceholder')}
+          options={wsOptions.map((o): InlineSelectOption => ({ id: o.id, label: o.label }))}
+          onChange={(id) => setFilter(id)}
         />
       </div>
       {filtered.length === 0

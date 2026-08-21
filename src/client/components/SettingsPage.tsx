@@ -1,33 +1,14 @@
 /**
  * dsh-jenkins —— 设置 → Jenkins 配置页：服务器管理（settings.section）。
+ * 新增 / 编辑服务器在独立弹框（ServerEditorModal）中操作，本页只负责列表与增删入口。
  */
 
 import { useEffect, useState } from 'react'
 import { t, tErr } from '../i18n.ts'
 import type { RunFn } from '../rpc.ts'
-import { TemplateSection } from './TemplateSection.tsx'
-import { SvgPlus } from './SvgIcons.tsx'
-
-interface PublicServer {
-  id: string
-  name: string
-  baseUrl: string
-  username: string
-  tokenMasked: string
-  hasToken: boolean
-  insecure: boolean
-}
-
-interface ServerDraft {
-  isNew: boolean
-  id: string | null
-  name: string
-  baseUrl: string
-  username: string
-  token: string
-  masked: string
-  insecure: boolean
-}
+import { ServerEditorModal } from './ServerEditorModal.tsx'
+import type { PublicServer } from './ServerEditorModal.tsx'
+import { TemplateModal } from './TemplateModal.tsx'
 
 interface TestResult {
   ok: boolean
@@ -37,170 +18,135 @@ interface TestResult {
 export interface SettingsPageProps {
   run: RunFn
   sessionId: string
+  onCountChange?: (count: number) => void
 }
 
-export function SettingsPage({ run, sessionId }: SettingsPageProps) {
+export function SettingsPage({ run, sessionId, onCountChange }: SettingsPageProps) {
   const [servers, setServers] = useState<PublicServer[]>([])
   const [loading, setLoading] = useState(true)
-  const [editing, setEditing] = useState<ServerDraft | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [formError, setFormError] = useState('')
-  const [testResult, setTestResult] = useState<TestResult | null>(null)
+  const [editor, setEditor] = useState<{ open: boolean; server: PublicServer | null }>({ open: false, server: null })
+  const [testResults, setTestResults] = useState<Record<string, TestResult>>({}) // 每台服务器的测试结果（显示在卡片名称后）
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [templateOpen, setTemplateOpen] = useState(false)
 
   const load = () => {
     setLoading(true)
     run(sessionId, { op: 'list' }).then((r) => {
-      if (r && r.ok) setServers((r.servers as PublicServer[]) || [])
+      if (r && r.ok) {
+        const list = (r.servers as PublicServer[]) || []
+        setServers(list)
+        if (onCountChange) onCountChange(list.length)
+      }
     }).catch(() => { }).finally(() => setLoading(false))
   }
   useEffect(() => { load() }, [])
 
-  // 空列表时自动显示“添加服务器”表单，无需空态提示。
-  const EMPTY_DRAFT: ServerDraft = { isNew: true, id: null, name: '', baseUrl: '', username: '', token: '', masked: '', insecure: false }
-  const draft = editing || EMPTY_DRAFT
+  const openAdd = () => {
+    setEditor({ open: true, server: null })
+  }
+  const openEdit = (s: PublicServer) => {
+    setEditor({ open: true, server: s })
+  }
+  const closeEditor = () => setEditor({ open: false, server: null })
 
-  const startAdd = () => {
-    setEditing({ ...EMPTY_DRAFT })
-    setFormError('')
-    setTestResult(null)
-  }
-  const startEdit = (s: PublicServer) => {
-    setEditing({ isNew: false, id: s.id, name: s.name, baseUrl: s.baseUrl, username: s.username, token: '', masked: s.tokenMasked || '', insecure: !!s.insecure })
-    setFormError('')
-    setTestResult(null)
-  }
-  const setField = (k: keyof Omit<ServerDraft, 'isNew' | 'id' | 'masked' | 'insecure'>) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setEditing((prev) => ({ ...(prev || EMPTY_DRAFT), [k]: e.target.value }))
-  const setInsecure = (e: React.ChangeEvent<HTMLInputElement>) =>
-    setEditing((prev) => ({ ...(prev || EMPTY_DRAFT), insecure: e.target.checked }))
-
-  const doTest = () => {
-    setBusy(true)
-    setTestResult(null)
-    run(sessionId, { op: 'test', server: { id: draft.id, name: draft.name, baseUrl: draft.baseUrl, username: draft.username, token: draft.token, insecure: !!draft.insecure } })
-      .then((r) => setTestResult(r && r.ok
-        ? { ok: true, text: t('connected') + ((r.version as string) ? '（Jenkins ' + r.version + '）' : '') }
-        : { ok: false, text: tErr(r, t('testFailed')) }))
-      .catch((e) => setTestResult({ ok: false, text: e instanceof Error ? e.message : String(e) }))
-      .finally(() => setBusy(false))
-  }
-  const doSave = () => {
-    setBusy(true)
-    setFormError('')
-    run(sessionId, { op: 'save', server: { id: draft.id, name: draft.name, baseUrl: draft.baseUrl, username: draft.username, token: draft.token, insecure: !!draft.insecure } })
-      .then((r) => {
-        if (r && r.ok) { setEditing(null); load() }
-        else setFormError(tErr(r, t('saveFailed')))
-      })
-      .catch((e) => setFormError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setBusy(false))
-  }
   const doDelete = (id: string) => {
     if (confirmDeleteId !== id) { setConfirmDeleteId(id); return }
     setConfirmDeleteId(null)
     run(sessionId, { op: 'delete', id }).then((r) => { if (r && r.ok) load() })
   }
   const doTestSaved = (s: PublicServer) => {
-    setTestResult(null)
+    // 测试结果持久化在服务器配置（host 端 verified 字段）；此处同步本地状态即时反馈
+    const applyVerified = (ok: boolean): void => {
+      setServers((prev) => prev.map((x) => (x.id === s.id ? { ...x, verified: ok } : x)))
+    }
     run(sessionId, { op: 'test', server: { id: s.id } })
-      .then((r) => setTestResult(r && r.ok
-        ? { ok: true, text: t('connected') + '：' + s.name + ((r.version as string) ? '（Jenkins ' + r.version + '）' : '') }
-        : { ok: false, text: t('connectionFailed') + s.name + '：' + tErr(r, t('testFailed')) }))
-      .catch((e) => setTestResult({ ok: false, text: t('connectionFailed') + s.name + '：' + (e instanceof Error ? e.message : String(e)) }))
+      .then((r) => {
+        const ok = !!(r && r.ok)
+        applyVerified(ok)
+        setTestResults((prev) => ({ ...prev, [s.id]: ok
+          ? { ok: true, text: t('connected') + ((r.version as string) ? '（Jenkins ' + r.version + '）' : '') }
+          : { ok: false, text: t('connectionFailed') + tErr(r, t('testFailed')) } }))
+      })
+      .catch((e) => {
+        applyVerified(false)
+        setTestResults((prev) => ({ ...prev, [s.id]: { ok: false, text: t('connectionFailed') + (e instanceof Error ? e.message : String(e)) } }))
+      })
   }
 
   return (
     <div className="dshj-settings">
       <div className="dshj-head">
-        <div className="dshj-title-row">
-          <div className="dshj-title">{t('settingsTitle')}</div>
+        <div className="dshj-title">{t('settingsTitle')}</div>
+        <div className="dshj-head-ops">
           <button
             type="button"
-            className="dshj-btn-icon"
+            className="dshj-btn dshj-btn-small"
             title={t('addServer')}
-            aria-label={t('addServer')}
-            onClick={startAdd}
+            onClick={openAdd}
           >
-            <SvgPlus size={16} />
+            {t('addServer')}
           </button>
           <button
             type="button"
-            className={'dshj-btn dshj-btn-small' + (templateOpen ? ' dshj-btn-active' : '')}
-            onClick={() => setTemplateOpen((v) => !v)}
+            className="dshj-btn dshj-btn-small"
+            title={t('projectConfigBtn')}
+            onClick={() => setTemplateOpen(true)}
           >
-            {t('templateBtn')}
+            {t('projectConfigBtn')}
           </button>
         </div>
       </div>
-      {testResult ? <div className={'dshj-result ' + (testResult.ok ? 'dshj-ok' : 'dshj-err')}>{testResult.text}</div> : null}
-      {templateOpen ? <TemplateSection /> : null}
-      {(editing || servers.length === 0) && !loading ? (
-        <div className="dshj-editor">
-          <div className="dshj-editor-title">{draft.isNew ? t('addTitle') : t('editTitle')}</div>
-          <div className="dshj-field">
-            <label>{t('nameLabel')}</label>
-            <input className="dshj-input" value={draft.name} onChange={setField('name')} placeholder={t('namePlaceholder')} />
-          </div>
-          <div className="dshj-field">
-            <label>{t('urlLabel')}<span className="dshj-req">*</span></label>
-            <input className="dshj-input" value={draft.baseUrl} onChange={setField('baseUrl')} placeholder={t('urlPlaceholder')} />
-          </div>
-          <div className="dshj-field">
-            <label>{t('usernameLabel')}</label>
-            <input className="dshj-input" value={draft.username} onChange={setField('username')} placeholder={t('usernamePlaceholder')} />
-          </div>
-          <div className="dshj-field">
-            <label>{t('tokenLabel')}<span className="dshj-req">*</span>{draft.isNew ? '' : t('keepToken')}</label>
-            <input
-              type="password"
-              className="dshj-input"
-              value={draft.token}
-              onChange={setField('token')}
-              placeholder={draft.isNew ? t('tokenPlaceholder') : (t('tokenSaved') + (draft.masked || '••••'))}
-              autoComplete="off"
-            />
-          </div>
-          <div className="dshj-field">
-            <label className="dshj-check">
-              <input type="checkbox" checked={!!draft.insecure} onChange={setInsecure} />
-              <span>{t('tlsLabel')}</span>
-            </label>
-          </div>
-          {formError ? <div className="dshj-err">{formError}</div> : null}
-          <div className="dshj-editor-ops">
-            <button type="button" className="dshj-btn" disabled={busy} onClick={doTest}>{busy ? t('testing') : t('testBtn')}</button>
-            <button type="button" className="dshj-btn dshj-btn-primary" disabled={busy} onClick={doSave}>{t('saveBtn')}</button>
-            <button type="button" className="dshj-btn" disabled={busy} onClick={() => setEditing(null)}>{t('cancelBtn')}</button>
-          </div>
-        </div>
+      {templateOpen ? <TemplateModal onClose={() => setTemplateOpen(false)} /> : null}
+      {editor.open ? (
+        <ServerEditorModal
+          run={run}
+          sessionId={sessionId}
+          server={editor.server}
+          onSaved={() => load()} // 编辑保存后 host 已清除该服务器 verified，重新拉取列表
+          onClose={closeEditor}
+        />
       ) : null}
       {loading ? <div className="dshj-empty">{t('loading')}</div>
-        : servers.length === 0 ? null
-          : (
-            <div className="dshj-list">
-              {servers.map((s) => (
+        : servers.length === 0 ? (
+          <div className="dshj-empty">
+            <div>{t('serverEmpty')}</div>
+            <button type="button" className="dshj-btn dshj-btn-small" onClick={openAdd} style={{ marginTop: 10 }}>{t('addServer')}</button>
+          </div>
+        ) : (
+          <div className="dshj-list">
+            {servers.map((s) => {
+              // 名称后的连接状态：优先显示本次会话的测试结果（成功绿/失败红），
+              // 无测试结果但有持久化 verified 时显示「连接成功」；其余不显示。
+              const tr = testResults[s.id]
+              const statusText = tr ? tr.text : (s.verified ? t('connected') : '')
+              const statusOk = tr ? tr.ok : s.verified
+              return (
                 <div key={s.id} className="dshj-card">
                   <div className="dshj-card-main">
-                    <div className="dshj-card-name">{s.name}</div>
+                    <div className="dshj-card-name-row">
+                      <span className="dshj-card-name">{s.name}</span>
+                      {statusText ? (
+                        <span className={'dshj-card-test ' + (statusOk ? 'dshj-ok' : 'dshj-err')}>{statusText}</span>
+                      ) : null}
+                    </div>
                     <div className="dshj-card-meta">{s.baseUrl + '  ·  ' + s.username + '  ·  ' + (s.tokenMasked || '')}</div>
                   </div>
                   <div className="dshj-card-ops">
                     <button type="button" className="dshj-btn dshj-btn-small" onClick={() => doTestSaved(s)}>{t('testBtn')}</button>
-                    <button type="button" className="dshj-btn dshj-btn-small" onClick={() => startEdit(s)}>{t('editBtn')}</button>
+                    <button type="button" className="dshj-btn dshj-btn-small" onClick={() => openEdit(s)}>{t('editBtn')}</button>
                     <button
                       type="button"
-                      className={'dshj-btn dshj-btn-small' + (confirmDeleteId === s.id ? ' dshj-btn-danger' : '')}
+                      className={'dshj-btn dshj-btn-small dshj-btn-danger' + (confirmDeleteId === s.id ? ' dshj-btn-solid' : '')}
                       onClick={() => doDelete(s.id)}
                     >
                       {confirmDeleteId === s.id ? t('confirmDelete') : t('deleteBtn')}
                     </button>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
+              )
+            })}
+          </div>
+        )}
     </div>
   )
 }

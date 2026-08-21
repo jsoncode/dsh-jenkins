@@ -33,6 +33,8 @@ const window = {
 const seed = {
   'react': require('react'),
   'react/jsx-runtime': require('react/jsx-runtime'),
+  'react-dom': require('react-dom'),
+  'react-dom/client': require('react-dom/client'),
   '@deepseek-ai/dsh-client-ui-primitives': { Modal: () => null },
 }
 
