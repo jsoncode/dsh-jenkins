@@ -58,8 +58,8 @@ export const css = [
   '.dshj-footer-btn-rail{border-radius:50%;justify-content:center;gap:0;width:36px;height:36px;margin:8px 0 10px;padding:0}',
   '.dshj-footer-group{width:100%;min-width:0}',
   '.dshj-footer-rail-group{width:auto}',
-  '.dshj-footer-logo{height:20px;width:auto;flex:none;display:block}',
-  '.dshj-footer-rail-group .dshj-footer-logo{height:22px}',
+  // 图标：28px 圆形 Jenkins 红底徽标（object-fit:contain 保持 SVG 比例居中，透明区透出红底）
+  '.dshj-footer-logo{height:28px;width:28px;flex:none;display:block;object-fit:contain;background:#D33833;border-radius:50%}',
   '.dshj-footer-label{white-space:nowrap;overflow:hidden}',
   // 宿主 sidebar.footer.action 列表容器：slots 渲染器为每个插槽输出稳定的
   // [data-slot] 锚点（display:contents，不参与布局），其父容器即宿主的

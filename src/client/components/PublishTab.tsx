@@ -677,7 +677,7 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
             </div>
           )}
       {paramsOpen ? (
-        <div className="dshj-backdrop dshj-json-backdrop">
+        <div className="dshj-backdrop dshj-json-backdrop" onClick={() => setParamsOpen(false)}>
           <div className="dshj-modal dshj-json-modal" onClick={(e) => e.stopPropagation()}>
             <div className="dshj-modal-header">
               <div>

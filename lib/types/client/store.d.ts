@@ -29,5 +29,20 @@ export interface ConfigModalStore {
 }
 /** 统一「Jenkins 配置」弹框的打开状态（footer 入口 open，overlay 弹框消费）。 */
 export declare function makeConfigModalStore(): ConfigModalStore;
+/** 侧边栏 footer「Jenkins 配置」按钮的排序策略：front = 排其它插件之前，back = 之后。 */
+export type FooterOrderPolicy = 'front' | 'back';
+export interface FooterOrderStoreApi {
+    store: {
+        value: FooterOrderPolicy | null;
+        subscribe(l: () => void): () => void;
+        set(v: FooterOrderPolicy): void;
+    };
+    useValue(): FooterOrderPolicy;
+}
+/**
+ * footer 排序策略共享 store：设置页（配置 tab）切换后立即生效，
+ * footer 入口注册处订阅它来按新策略重算 order（无需刷新页面）。
+ */
+export declare function makeFooterOrderStore(): FooterOrderStoreApi;
 export {};
 //# sourceMappingURL=store.d.ts.map

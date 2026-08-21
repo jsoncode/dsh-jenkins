@@ -15,6 +15,10 @@ export interface OpsDeps {
     readCacheJson(): Record<string, unknown>;
     /** 写入浏览器缓存（整体替换）。 */
     writeCacheJson(cache: Record<string, unknown>): Promise<void>;
+    /** 读取 footer 排序策略（front/back）。 */
+    readFooterOrder(): 'front' | 'back';
+    /** 写入 footer 排序策略（front/back）。 */
+    writeFooterOrder(v: 'front' | 'back'): Promise<void>;
 }
 export declare function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult>;
 //# sourceMappingURL=ops.d.ts.map

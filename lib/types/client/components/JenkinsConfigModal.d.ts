@@ -11,6 +11,7 @@
 import type { RunFn } from '../rpc.ts';
 import type { Poller } from '../poller.ts';
 import type { StorageApi } from '../storage.ts';
+import type { FooterOrderStoreApi } from '../store.ts';
 type WorkspaceItem = {
     path?: string;
     sessionIds?: string[];
@@ -21,6 +22,8 @@ export interface JenkinsConfigModalProps {
     storage: StorageApi;
     useOpen(): boolean;
     close(): void;
+    /** footer 排序策略共享 store（配置 tab 的开关 ↔ footer 注册）。 */
+    footerOrderStore: FooterOrderStoreApi;
     useWorkspaces?: (selector: (s: {
         items?: WorkspaceItem[];
     }) => unknown) => unknown;
@@ -28,6 +31,6 @@ export interface JenkinsConfigModalProps {
         current?: string;
     }) => unknown) => unknown;
 }
-export declare function JenkinsConfigModal({ run, poller, storage, useOpen, close, useWorkspaces, useSessions }: JenkinsConfigModalProps): import("react").JSX.Element | null;
+export declare function JenkinsConfigModal({ run, poller, storage, useOpen, close, footerOrderStore, useWorkspaces, useSessions }: JenkinsConfigModalProps): import("react").JSX.Element | null;
 export {};
 //# sourceMappingURL=JenkinsConfigModal.d.ts.map

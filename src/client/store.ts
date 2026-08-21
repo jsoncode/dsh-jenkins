@@ -51,3 +51,35 @@ export function makeConfigModalStore(): ConfigModalStore {
   }
   return { store, useOpen }
 }
+
+/** 侧边栏 footer「Jenkins 配置」按钮的排序策略：front = 排其它插件之前，back = 之后。 */
+export type FooterOrderPolicy = 'front' | 'back'
+
+export interface FooterOrderStoreApi {
+  store: {
+    value: FooterOrderPolicy | null
+    subscribe(l: () => void): () => void
+    set(v: FooterOrderPolicy): void
+  }
+  useValue(): FooterOrderPolicy
+}
+
+/**
+ * footer 排序策略共享 store：设置页（配置 tab）切换后立即生效，
+ * footer 入口注册处订阅它来按新策略重算 order（无需刷新页面）。
+ */
+export function makeFooterOrderStore(): FooterOrderStoreApi {
+  const store = {
+    value: null as FooterOrderPolicy | null,
+    listeners: [] as Array<() => void>,
+    emit() { for (let i = 0; i < this.listeners.length; i++) this.listeners[i]() },
+    subscribe(l: () => void) { this.listeners.push(l); return () => { const i = this.listeners.indexOf(l); if (i >= 0) this.listeners.splice(i, 1) } },
+    set(v: FooterOrderPolicy) { this.value = v; this.emit() },
+  }
+  const useValue = (): FooterOrderPolicy => {
+    const [v, setV] = useState<FooterOrderPolicy>(store.value ?? 'back')
+    useEffect(() => store.subscribe(() => setV(store.value ?? 'back')), [])
+    return v
+  }
+  return { store, useValue }
+}

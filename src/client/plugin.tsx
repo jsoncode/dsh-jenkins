@@ -18,15 +18,36 @@ import { injectStyles } from './styles.ts'
 import { makeRun, type RunFn } from './rpc.ts'
 import { createStorage } from './storage.ts'
 import { createPoller } from './poller.ts'
-import { makeConfigModalStore } from './store.ts'
+import { makeConfigModalStore, makeFooterOrderStore, type FooterOrderPolicy } from './store.ts'
 import { FooterButton } from './components/FooterButton.tsx'
 import { JenkinsConfigModal } from './components/JenkinsConfigModal.tsx'
 import { t } from './i18n.ts'
 
-/** 宿主 slots 服务最小视图。 */
+/** 宿主 slots 服务最小视图（含 footer 动态排序所需的查询 / 订阅 API）。 */
 interface SlotsService {
   inject(name: string, fn: () => unknown): unknown
-  register(def: Record<string, unknown>, component: unknown): unknown
+  register(def: Record<string, unknown>, component: unknown): () => void
+  entries(name: string): ReadonlyArray<{ options: { id?: string; order?: number } }>
+  subscribe(name: string, fn: () => void): () => void
+}
+
+/** 侧边栏 footer 插槽 key 与本插件入口 id。 */
+const FOOTER_SLOT = 'sidebar.footer.action'
+const FOOTER_ENTRY_ID = 'dsh-jenkins'
+
+/**
+ * 按策略计算 footer 入口的 order（排除自身，只参考其它插件的 order）：
+ * front = 最小 order - 10（排最前）；back = 最大 order + 10（排最后）。
+ */
+function computeFooterOrder(
+  entries: ReadonlyArray<{ options: { id?: string; order?: number } }>,
+  policy: FooterOrderPolicy,
+): number {
+  const orders = entries
+    .filter((e) => e.options.id !== FOOTER_ENTRY_ID)
+    .map((e) => e.options.order ?? 0)
+  if (orders.length === 0) return policy === 'front' ? -10 : 10
+  return policy === 'front' ? Math.min(...orders) - 10 : Math.max(...orders) + 10
 }
 
 /** 浏览器侧插件上下文（宿主注入）。 */
@@ -54,6 +75,8 @@ export function createPlugin(): ClientPluginModule {
     apply(ctx: ClientCtx) {
       const run: RunFn = makeRun(ctx)
       const { store: configStore, useOpen: useConfigOpen } = makeConfigModalStore()
+      // footer 排序策略共享 store：设置页「配置」tab 切换后，footer 注册处立即重算。
+      const footerOrderStore = makeFooterOrderStore()
       const slots = ctx.get<SlotsService>('slots')
       if (slots === undefined) return
       injectStyles()
@@ -85,21 +108,49 @@ export function createPlugin(): ClientPluginModule {
 
       // ─── 侧边栏底部入口：常驻「Jenkins 配置」按钮（footer.action 区，
       //     渲染在 sidebar.settings（dsh 配置按钮）上方），打开统一弹框 ──
-      //     order 决定与其它插件按钮的排列顺序（升序，默认 0）：20 表示排在
-      //     占用该插槽的其它插件（如 dsh1024-store，order 10）之后；若需排到
-      //     其前，改为负数（如 -10）。styles.ts 已把该列表容器改为纵向堆叠，
-      //     多个按钮各占一行、不挤在一行。
-      slots.inject('sidebar.footer.action', () => slots.register(
-        { name: 'sidebar.footer.action', id: 'dsh-jenkins', order: 20 },
-        (props: Record<string, unknown>) => (
-          <FooterButton
-            onOpen={() => configStore.open(true)}
-            reportSession={(s) => { if (s) sessionRef.current = s }}
-            wide={props.wide as boolean | undefined}
-            useSessions={props.useSessions as FooterWorkspaceHooks['useSessions']}
-          />
-        ),
-      ))
+      //     order 动态计算：策略由设置页「配置」tab 的开关决定（front=靠前 /
+      //     back=靠后，默认靠后），并订阅插槽变化 —— 其它插件增删或改 order 时
+      //     自动重算并重注册（order 未变化时跳过，避免自触发死循环）。styles.ts
+      //     已把该列表容器改为纵向堆叠，多个按钮各占一行、不挤在一行。
+      slots.inject(FOOTER_SLOT, () => {
+        let dispose: (() => void) | undefined
+        let lastOrder: number | undefined
+        let policy: FooterOrderPolicy = footerOrderStore.store.value ?? 'back'
+        const register = (): void => {
+          const order = computeFooterOrder(slots.entries(FOOTER_SLOT), policy)
+          if (order === lastOrder) return
+          lastOrder = order
+          if (dispose) { dispose(); dispose = undefined }
+          dispose = slots.register(
+            { name: FOOTER_SLOT, id: FOOTER_ENTRY_ID, order },
+            (props: Record<string, unknown>) => (
+              <FooterButton
+                onOpen={() => configStore.open(true)}
+                reportSession={(s) => { if (s) sessionRef.current = s }}
+                wide={props.wide as boolean | undefined}
+                useSessions={props.useSessions as FooterWorkspaceHooks['useSessions']}
+              />
+            ),
+          )
+        }
+        // 设置页切换策略：立即按新策略重算（order 未变化时不重注册）。
+        const unsubscribePolicy = footerOrderStore.store.subscribe(() => {
+          const next = footerOrderStore.store.value
+          if (next !== null && next !== policy) {
+            policy = next
+            register()
+          }
+        })
+        // 其它插件注册/注销或改 order：重算位置，保持「靠前/靠后」语义。
+        const unsubscribeSlot = slots.subscribe(FOOTER_SLOT, register)
+        register()
+        // 启动时读取持久化策略（HTTP 路由；老宿主回退命令通道）。
+        run('', { op: 'footerOrderGet' }).then((r) => {
+          const v = r && r.ok ? r.footerOrder : undefined
+          if (v === 'front' || v === 'back') footerOrderStore.store.set(v)
+        }).catch(() => { })
+        return () => { unsubscribePolicy(); unsubscribeSlot(); if (dispose) dispose() }
+      })
 
       // ─── 统一「Jenkins 配置」弹框（发布 / 配置 / 历史 三 tab）──────────
       slots.inject('shell.overlay', () => slots.register(
@@ -111,6 +162,7 @@ export function createPlugin(): ClientPluginModule {
             storage={storage}
             useOpen={useConfigOpen}
             close={() => configStore.close()}
+            footerOrderStore={footerOrderStore}
             useWorkspaces={props.useWorkspaces as ModalWorkspaceHooks['useWorkspaces']}
             useSessions={props.useSessions as ModalWorkspaceHooks['useSessions']}
           />

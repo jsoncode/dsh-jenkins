@@ -28,6 +28,10 @@ export interface OpsDeps {
   readCacheJson(): Record<string, unknown>
   /** 写入浏览器缓存（整体替换）。 */
   writeCacheJson(cache: Record<string, unknown>): Promise<void>
+  /** 读取 footer 排序策略（front/back）。 */
+  readFooterOrder(): 'front' | 'back'
+  /** 写入 footer 排序策略（front/back）。 */
+  writeFooterOrder(v: 'front' | 'back'): Promise<void>
 }
 
 const maskToken = (t: string): string => {
@@ -420,6 +424,19 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
     cache[key] = req.value
     await deps.writeCacheJson(cache)
     return { ok: true }
+  }
+
+  if (op === 'footerOrderGet') {
+    return { ok: true, footerOrder: deps.readFooterOrder() }
+  }
+
+  if (op === 'footerOrderSet') {
+    const v = String(req.footerOrder || '')
+    if (v !== 'front' && v !== 'back') {
+      return { ok: false, code: 'footer-order-invalid', error: 'footerOrder must be "front" or "back"' }
+    }
+    await deps.writeFooterOrder(v)
+    return { ok: true, footerOrder: v }
   }
 
   return { ok: false, code: 'unknown-op', error: 'Unknown operation: ' + String(op) }
