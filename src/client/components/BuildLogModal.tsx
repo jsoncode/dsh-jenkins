@@ -96,7 +96,7 @@ export function BuildLogModal({ entry, run, sessionId, onClose }: BuildLogModalP
           ) : null}
         </div>
         {!loading && !error ? (
-          <div className="dshj-history-ops dshj-log-ops">
+          <div className="dshj-modal-footer">
             <button type="button" className="dshj-btn dshj-btn-small" onClick={() => void copy()}>
               {copied ? t('copied') : t('copy')}
             </button>
