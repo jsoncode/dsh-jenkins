@@ -1,17 +1,5 @@
 # 发布工作流：推送 v* tag 时触发
-# - release job：安装依赖（pnpm frozen-lockfile）+ 类型检查（tsc -b）+ 构建（tsc -b && tsdown）→ 打包并直接创建 GitHub Release（非草稿）
-#
-# npm 发布改为本地手动执行（npm publish），不再由 CI 承担：
-# 2026 年 npm 已吊销 Classic/Automation token，仅剩 Granular token 且默认要求
-# 2FA（账号开启 "Require 2FA for write actions" 时 publish 必须 OTP，CI 无法
-# 交互输入）；用普通 Granular token 在 CI 发布会得到误导性的 E404。如后续要
-# 恢复 CI 自动发布，请改用 npm Trusted Publishing（OIDC）：先在 npm 包页面把
-# 本仓库配置为可信发布者，再在 workflow 加 permissions: id-token: write 并
-# 用 npm publish --provenance，无需 token 与 2FA。
-#
-# 宿主半边构建为 lib/index.js（ESM）；浏览器半边由 tsdown 构建为 lib/client.js
-# （__ModuleLoader__ 单文件 CJS 工厂，banner 包装）。产物提交 git（git 安装无需
-# 构建），此处重建是为了保证发布内容与 tag 源码一致。
+# - release job：安装依赖（pnpm frozen-lockfile）+ 类型检查（tsc -b）+ 构建（tsc -b && tsdown）→ 打包并直接创建 GitHub Release（非草稿）→ 自动通过 OIDC 凭证发布至 npm
 #
 # 历史排障记录（勿删）：v0.1.26~v0.1.28 的 release job 一直挂在 Setup Node 步骤，
 # 报错 "Unable to locate executable file: pnpm"。先后尝试过 npm install -g、
@@ -31,7 +19,8 @@ jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write   # 用于创建 GitHub Release
+      id-token: write   # 必须！用于通过 OIDC 与 npm 进行身份安全验证
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -76,3 +65,8 @@ jobs:
             --generate-notes \
             --verify-tag \
             *.tgz
+
+      - name: Publish to npm via Trusted Publishing
+        # 使用原生 npm 进行发布。--provenance 会将发布行为绑定到当前 GitHub Actions 的工作流凭证上
+        # --no-git-checks 避免 npm publish 检查工作区干净程度（因为上游步骤可能有构建产物生成）
+        run: npm publish --provenance --no-git-checks
