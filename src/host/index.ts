@@ -45,7 +45,6 @@ export const Config: import('@deepseek-ai/schemastery').default<{ servers: Serve
 const JenkinsSettingsSchema = Schema.object({
   serversJson: Schema.string().default('[]'),
   cacheJson: Schema.string().default('{}'),
-  footerOrder: Schema.string().default('back'),
 })
 
 /** 宿主 commands 服务最小视图。 */
@@ -140,15 +139,6 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
   const writeCacheJson = async (cache: Record<string, unknown>): Promise<void> => {
     if (scope !== null) await scope.update({ cacheJson: JSON.stringify(cache) })
   }
-  // Footer 排序策略（front/back）：设置页「配置」tab 切换，持久化到 settings namespace。
-  const readFooterOrder = (): 'front' | 'back' => {
-    if (scope === null) return 'back'
-    const value = scope.get()
-    return value && value.footerOrder === 'front' ? 'front' : 'back'
-  }
-  const writeFooterOrder = async (v: 'front' | 'back'): Promise<void> => {
-    if (scope !== null) await scope.update({ footerOrder: v })
-  }
 
   // 按名称 / id / baseUrl（去尾部斜杠）匹配，兼容配置里直接写服务器地址的形式。
   const normUrl = (u: string): string => String(u || '').trim().replace(/\/+$/, '')
@@ -158,7 +148,7 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
     return all.find((s) => s.name === nameOrIdOrUrl || s.id === nameOrIdOrUrl || normUrl(s.baseUrl) === ref)
   }
 
-  const deps = { ctx, readServers, writeServers, findServer, readCacheJson, writeCacheJson, readFooterOrder, writeFooterOrder }
+  const deps = { ctx, readServers, writeServers, findServer, readCacheJson, writeCacheJson }
 
   // ─── 浏览器 HTTP API（/dsh-jenkins/api）────────────────────────
   // 浏览器半边（设置页 / 执行弹框 / 后台轮询 / 历史存储）默认经此路由与宿主通信：
@@ -227,7 +217,7 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
     (commands as CommandsService).register({
       name: 'dsh-jenkins',
       description: 'Jenkins CLI：管理服务器配置并触发/查询构建（设置界面/工作区入口调用）。Manage Jenkins servers and trigger/query builds (used by the settings UI and workspace entry). 参数为 JSON：'
-        + '{ "op": "list|save|delete|test|jobs|jobDetail|trigger|queueStatus|buildStatus|buildLog|cancel|cacheGet|cacheSet|footerOrderGet|footerOrderSet|workspaceConfig|workspaceTrigger", ... }。',
+        + '{ "op": "list|save|delete|test|jobs|jobDetail|trigger|queueStatus|buildStatus|buildLog|cancel|cacheGet|cacheSet|workspaceConfig|workspaceTrigger", ... }。',
       input: { hint: '{"op":"list"}' },
       recordInput: true,
       handler: async (invocation: { rawInput?: string }): Promise<{ kind: 'success' | 'error'; text: string }> => {

@@ -15,14 +15,12 @@ import { t } from '../i18n.ts'
 import type { RunFn } from '../rpc.ts'
 import type { Poller } from '../poller.ts'
 import type { StorageApi, HistoryEntry } from '../storage.ts'
-import type { FooterOrderStoreApi } from '../store.ts'
 import { ErrorBoundary } from './ErrorBoundary.tsx'
 import { PublishTab } from './PublishTab.tsx'
 import { SettingsPage } from './SettingsPage.tsx'
 import { HistoryTab } from './HistoryTab.tsx'
-import { EntryConfigTab } from './EntryConfigTab.tsx'
 
-type ConfigTab = 'publish' | 'config' | 'entry' | 'history'
+type ConfigTab = 'publish' | 'config' | 'history'
 
 type WorkspaceItem = { path?: string; sessionIds?: string[] }
 
@@ -32,8 +30,6 @@ export interface JenkinsConfigModalProps {
   storage: StorageApi
   useOpen(): boolean
   close(): void
-  /** footer 排序策略共享 store（配置 tab 的开关 ↔ footer 注册）。 */
-  footerOrderStore: FooterOrderStoreApi
   useWorkspaces?: (selector: (s: { items?: WorkspaceItem[] }) => unknown) => unknown
   useSessions?: (selector: (s: { current?: string }) => unknown) => unknown
 }
@@ -42,10 +38,9 @@ const TABS: Array<{ id: ConfigTab; label: string }> = [
   { id: 'publish', label: t('tabPublish') },
   { id: 'config', label: t('tabConfig') },
   { id: 'history', label: t('tabHistory') },
-  { id: 'entry', label: t('tabEntry') },
 ]
 
-export function JenkinsConfigModal({ run, poller, storage, useOpen, close, footerOrderStore, useWorkspaces, useSessions }: JenkinsConfigModalProps) {
+export function JenkinsConfigModal({ run, poller, storage, useOpen, close, useWorkspaces, useSessions }: JenkinsConfigModalProps) {
   const open = useOpen()
   const [tab, setTab] = useState<ConfigTab>('publish')
   const [configCount, setConfigCount] = useState(0) // 「配置」tab：已配置服务器数
@@ -128,10 +123,6 @@ export function JenkinsConfigModal({ run, poller, storage, useOpen, close, foote
           ) : tab === 'config' ? (
             <ErrorBoundary label="SettingsPage">
               <SettingsPage run={run} sessionId={sessionId} onCountChange={setConfigCount} />
-            </ErrorBoundary>
-          ) : tab === 'entry' ? (
-            <ErrorBoundary label="EntryConfigTab">
-              <EntryConfigTab run={run} sessionId={sessionId} footerOrderStore={footerOrderStore} />
             </ErrorBoundary>
           ) : (
             <ErrorBoundary label="HistoryTab">
