@@ -11,6 +11,7 @@
     "dsh-jenkins",
     "jsoncodee"
   ],
+  "repository": "github:jsoncode/dsh-jenkins",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public"
