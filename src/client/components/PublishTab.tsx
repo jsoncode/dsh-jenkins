@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { fmtDur, LANG, t, tErr } from '../i18n.ts'
-import { matchServer, type CachedLaunch, type StorageApi } from '../storage.ts'
+import { matchServer, type CachedLaunch, type HistoryEntry, type StorageApi } from '../storage.ts'
 import type { RunFn } from '../rpc.ts'
 import type { Poller } from '../poller.ts'
 import { ServerEditorModal } from './ServerEditorModal.tsx'
@@ -82,9 +82,11 @@ export interface PublishTabProps {
   onCountChange?: (count: number) => void
   /** 上报本 tab 的 footer 操作按钮（由弹框渲染在固定 footer 区；null/undefined 表示无）。 */
   onFooter?: (node: ReactNode) => void
+  /** 打开指定发布条目的构建日志（父弹框切到「历史」tab 并弹出日志）。 */
+  onOpenLog?: (entry: HistoryEntry) => void
 }
 
-export function PublishTab({ initialCwd, sessionId, run, poller, storage, workspaceItems, onCountChange, onFooter }: PublishTabProps) {
+export function PublishTab({ initialCwd, sessionId, run, poller, storage, workspaceItems, onCountChange, onFooter, onOpenLog }: PublishTabProps) {
   // 项目列表：工作区路径（去空、去重、保持顺序）
   const paths = [...new Set((Array.isArray(workspaceItems) ? workspaceItems : [])
     .map((w) => (w && typeof w.path === 'string' ? w.path : ''))
@@ -121,12 +123,12 @@ export function PublishTab({ initialCwd, sessionId, run, poller, storage, worksp
           onChange={(id) => setProject(id)}
         />
       </div>
-      <LauncherContent cwd={project} sessionId={sessionId} config={config} run={run} poller={poller} storage={storage} onCountChange={onCountChange} onFooter={onFooter} />
+      <LauncherContent cwd={project} sessionId={sessionId} config={config} run={run} poller={poller} storage={storage} onCountChange={onCountChange} onFooter={onFooter} onOpenLog={onOpenLog} />
     </>
   )
 }
 
-function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCountChange, onFooter }: {
+function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCountChange, onFooter, onOpenLog }: {
   cwd: string
   sessionId: string
   config: WorkspaceConfig | null
@@ -135,6 +137,7 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
   storage: StorageApi
   onCountChange?: (count: number) => void
   onFooter?: (node: ReactNode) => void
+  onOpenLog?: (entry: HistoryEntry) => void
 }) {
   // 配置数组：每个元素 = { job, server, parameters }（server 即发布目标/环境标识）
   const entries = config && Array.isArray(config.entries) ? config.entries : []
@@ -152,6 +155,16 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
   const [actionError, setActionError] = useState('')
   // 注意：不能用 `run` 命名构建状态，会遮蔽外层 RPC 助手 run()。
   const [runState, setRunState] = useState<RunState | null>(null)
+  // 进行中任务列表（result 为空且带轮询数据）：弹框打开时展示在「请先选择 Job」处，
+  // 提交构建后同样以该列表呈现（更统一）；订阅轮询器保证实时可见
+  const [inFlightList, setInFlightList] = useState<HistoryEntry[]>([])
+  const loadInFlight = useCallback((): void => {
+    void storage.readAllHistory(sessionId).then((h) => {
+      setInFlightList((h || []).filter((e) => e.result == null && (e.queueId != null || e.buildNumber != null)))
+    }).catch(() => undefined)
+  }, [storage, sessionId])
+  useEffect(() => { loadInFlight() }, [loadInFlight])
+  useEffect(() => poller.subscribe(loadInFlight), [poller, loadInFlight])
   const [servers, setServers] = useState<Server[]>([])
   const [serverPool, setServerPool] = useState<Server[]>([]) // 下拉候选：配置交集（交集为空或未配置时退化为全部服务器）
   const [serverMismatch, setServerMismatch] = useState<string[]>([]) // 配置里未匹配到的服务器标识
@@ -349,7 +362,7 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
         const resSegments = Array.isArray(res.segments) && (res.segments as unknown[]).length
           ? (res.segments as string[])
           : segments
-        const historyId = await storage.pushHistory(sessionId, cwd, {
+        const entryObj: HistoryEntry = {
           id: 'h' + Date.now() + '-' + Math.floor(Math.random() * 1e6),
           time: Date.now(),
           job: selectedJobPath,
@@ -362,7 +375,10 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
           buildNumber: (res.nextBuildNumber as number) ?? null,
           since: Date.now(),
           sessionId,
-        })
+        }
+        const historyId = await storage.pushHistory(sessionId, cwd, entryObj)
+        // 立即刷新进行中列表：刚提交的任务马上出现在列表中（无需等下一个轮询周期）
+        loadInFlight()
         if (res.queueId) {
           setRunState({ phase: 'queued', queueId: res.queueId as number, serverId: resServerId, segments: resSegments, buildNumber: null, historyId, message: t('queuedMsg', { n: res.queueId as number }), since: Date.now() })
         } else {
@@ -406,34 +422,83 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
     if (IS_DASH_LABEL.test(k)) item.submitted = false
     formParamsJson[k] = item
   }
+  // 「打开在线发布」跳转地址：已选服务器 + Job → Jenkins 发布页（/build，参数化 Job 即
+  // 「Build with Parameters」表单页）；已选服务器但未选 Job → Jenkins 服务首页（baseUrl）；
+  // 服务器未选时为空串（按钮置灰禁用）
+  const onlineConfigUrl = useMemo<string>(() => {
+    if (!selectedServer) return ''
+    const base = (selectedServer.baseUrl || '').replace(/\/+$/, '')
+    if (!selectedJobPath) return base
+    const segs = selectedJobPath.split('/').filter(Boolean).map((s) => encodeURIComponent(s))
+    if (segs.length === 0) return base
+    return base + '/job/' + segs.join('/job/') + '/build'
+  }, [selectedServer, selectedJobPath])
 
   // footer 操作按钮：运行态 = 返回参数（+ 完成后重新构建）；表单态 = 查看参数 + 触发构建。
-  // useMemo 保证节点引用只在状态实际变化时更新，配合父组件 setState 引用比较避免渲染循环。
+  // 【打开在线发布】始终展示（无法拼出地址时置灰禁用）；useMemo 保证节点引用只在状态实际变化时更新，
+  // 配合父组件 setState 引用比较避免渲染循环。
   const footerNode = useMemo<ReactNode>(() => {
+    const publishLink = onlineConfigUrl ? (
+      <a className="dshj-link-btn" href={onlineConfigUrl} target="_blank" rel="noopener noreferrer">{t('openOnlinePublish')} ↗</a>
+    ) : (
+      <span className="dshj-link-btn dshj-link-btn-disabled" title={t('openOnlinePublishDisabled')}>{t('openOnlinePublish')} ↗</span>
+    )
     if (runState) {
       return (
         <>
           <button type="button" className="dshj-btn" onClick={() => setRunState(null)}>{t('backParams')}</button>
+          {publishLink}
           {runState.phase === 'done' ? (
             <button type="button" className="dshj-btn dshj-btn-primary" onClick={stableSubmit}>{t('rebuild')}</button>
           ) : null}
         </>
       )
     }
-    if (!selectedJobPath) return null
     return (
       <>
-        <button type="button" className="dshj-link-btn" disabled={submitting} onClick={() => setParamsOpen(true)}>{t('viewParams')}</button>
-        <button type="button" className="dshj-btn dshj-btn-primary" disabled={submitting} onClick={stableSubmit}>{submitting ? t('submitting') : t('submit')}</button>
+        {selectedJobPath ? (
+          <button type="button" className="dshj-link-btn" disabled={submitting} onClick={() => setParamsOpen(true)}>{t('viewParams')}</button>
+        ) : null}
+        {publishLink}
+        {selectedJobPath ? (
+          <button type="button" className="dshj-btn dshj-btn-primary" disabled={submitting} onClick={stableSubmit}>{submitting ? t('submitting') : t('submit')}</button>
+        ) : null}
       </>
     )
-  }, [runState, selectedJobPath, submitting, stableSubmit])
+  }, [runState, selectedJobPath, submitting, stableSubmit, onlineConfigUrl])
 
   // 上报 footer；卸载时清空。onFooter 由父组件 useCallback 稳定，effect 只随 footerNode 变化触发。
   useEffect(() => {
     onFooter?.(footerNode)
     return () => onFooter?.(null)
   }, [footerNode, onFooter])
+
+  // 进行中任务简洁列表（提交后与「未选 Job」引导区共用同一视图，更统一）：
+  // 展示 Job、服务器、#构建号/Q#队列号与「进行中」徽标，点击跳转「历史」打开该条日志。
+  const renderInFlight = (showHint: boolean): ReactNode => (
+    <div className="dshj-inflight">
+      {showHint ? <div className="dshj-select-hint">{t('selectJobFirst')}</div> : null}
+      <div className="dshj-inflight-title">{t('inFlightTitle')}</div>
+      <div className="dshj-inflight-list">
+        {inFlightList.map((e) => (
+          <button
+            key={e.id}
+            type="button"
+            className="dshj-inflight-item"
+            title={t('inFlightHint')}
+            onClick={() => { if (onOpenLog) onOpenLog(e) }}
+          >
+            <span className="dshj-inflight-main">{e.job + (e.env ? ' · ' + e.env : '')}</span>
+            <span className="dshj-inflight-meta">
+              {e.server ? <span className="dshj-chip">{e.server}</span> : null}
+              {e.buildNumber ? <span className="dshj-chip">#{e.buildNumber}</span> : e.queueId ? <span className="dshj-chip">Q#{e.queueId}</span> : null}
+              <span className="dshj-history-result dshj-history-pending">{t('historyPending')}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
 
   return (
     <>
@@ -453,10 +518,11 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
             disabled={!!runState || submitting || serverPool.length === 0}
             onChange={(id) => setSelectedServerId(id)}
           />
-          {/* 未配置服务器时可直接打开「新增服务器」弹框，保存后自动刷新本列表 */}
+          {/* 未配置服务器时可直接打开「新增服务器」弹框，保存后自动刷新本列表；
+              右侧固定 120px 等宽，保证与 Job 行的下拉框宽度一致 */}
           <button
             type="button"
-            className="dshj-btn dshj-btn-small"
+            className="dshj-btn dshj-btn-small dshj-server-side"
             title={t('goAdd')}
             disabled={!!runState || submitting}
             onClick={() => setAddServerOpen(true)}
@@ -490,18 +556,21 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
             disabled={!!runState || submitting || jobsLoading || !selectedServer}
             onChange={(id) => { setSelectedJobPath(id); setJobSearch(id) }}
           />
-          {selectedServer && !jobsLoading && !jobsError ? (
-            <span className="dshj-job-count">{t('jobCount', { n: jobs.length })}</span>
-          ) : null}
+          {/* 右侧固定 120px 等宽（无计数时保留空位），保证与服务器行的下拉框宽度一致 */}
+          <span className={'dshj-job-count dshj-server-side' + (selectedServer && !jobsLoading && !jobsError ? '' : ' dshj-server-side-empty')}>
+            {selectedServer && !jobsLoading && !jobsError ? t('jobCount', { n: jobs.length }) : ''}
+          </span>
         </div>
       </div>
       {/* 「Job 列表」下方的虚线分割线：分隔上方的选择区与下方的参数表单 */}
       <div className="dshj-divider" />
       {runState ? (
         <div>
-          <div className="dshj-run-title">{runState.phase === 'queued' ? t('phaseQueued') : runState.phase === 'running' ? t('phaseRunning') : runState.phase === 'done' ? t('phaseDone') : t('phaseError')}</div>
-          <div className={'dshj-run-message ' + (runState.phase === 'done' ? (runState.result === 'SUCCESS' ? 'dshj-ok' : (runState.result === 'FAILURE' || runState.result === 'ABORTED' ? 'dshj-err' : 'dshj-warn')) : '')}>{runState.message || ''}</div>
-          {(runState.phase === 'queued' || runState.phase === 'running') ? <div className="dshj-spinner" /> : null}
+          {/* 提交后不再展示冗长的状态块（排队中/消息/查看完整日志），统一用「进行中的发布」
+              列表呈现 —— 点击列表项即可打开该条构建日志（实时刷新 / 可终止）。 */}
+          {runState.phase === 'error' && runState.message ? (
+            <div className="dshj-run-message dshj-err">{runState.message}</div>
+          ) : null}
           {runState.phase === 'done' ? (
             <div>
               <div className="dshj-run-line">{t('resultLabel', { n: runState.buildNumber as number }) + (runState.result || 'UNKNOWN')}</div>
@@ -509,10 +578,21 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
               {runState.url ? <a className="dshj-link" href={runState.url} target="_blank" rel="noopener noreferrer">{t('openPage')}</a> : null}
             </div>
           ) : null}
+          {inFlightList.length > 0 ? renderInFlight(false)
+            : runState.phase !== 'done' ? (
+              <div className="dshj-empty">
+                <span className="dshj-spinner" />
+                <div>{t('submittedMsg')}</div>
+              </div>
+            ) : null}
         </div>
       )
-        : !selectedJobPath ? <div className="dshj-empty">{t('selectJobFirst')}</div>
-          : (
+        : !selectedJobPath ? (
+          <div>
+            {/* 未选 Job 时的引导区：有进行中任务时展示简洁列表，点击跳转「历史」打开该条日志 */}
+            {inFlightList.length > 0 ? renderInFlight(true) : <div className="dshj-empty">{t('selectJobFirst')}</div>}
+          </div>
+        ) : (
             <div>
               {detailLoading ? <div className="dshj-empty">{t('loadingParams')}</div>
                 : detailError && formKeys.length === 0 ? <div className="dshj-err dshj-empty">{detailError}</div>
@@ -523,6 +603,10 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
                           const v = formValues[k]
                           const p = serverParamsByName[k]
                           const set = (nv: string | number | boolean) => setFormValues((prev) => ({ ...prev, [k]: nv }))
+                          // 描述提示语展示位置：输入框/多行文本放入控件 placeholder，下拉框放入搜索框
+                          // placeholder，均不单独占一行；仅布尔（checkbox）等无 placeholder 的类型
+                          // 仍在控件下方显示一行
+                          const descInControl = !p || p.type === 'string' || p.type === 'password' || p.type === 'credentials' || p.type === 'file' || p.type === 'text' || p.type === 'choice'
                           // 长横线 label：不渲染 label+控件行，改为虚线分割线（备注文本显示在线上）
                           if (IS_DASH_LABEL.test(k)) {
                             return (
@@ -543,13 +627,21 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
                             control = (
                               <InlineSelect
                                 value={String(v)}
-                                searchPlaceholder={t('pickerSearchPlaceholder')}
+                                searchPlaceholder={p && p.description ? p.description : t('pickerSearchPlaceholder')}
                                 options={(p.choices || []).map((c): InlineSelectOption => ({ id: String(c), label: String(c) }))}
                                 onChange={(id) => set(id)}
                               />
                             )
                           } else if (p && p.type === 'text') {
-                            control = <textarea className="dshj-textarea" rows={3} value={String(v === undefined || v === null ? '' : v)} onChange={(e) => set(e.target.value)} />
+                            control = (
+                              <textarea
+                                className="dshj-textarea"
+                                rows={3}
+                                placeholder={p && p.description ? p.description : undefined}
+                                value={String(v === undefined || v === null ? '' : v)}
+                                onChange={(e) => set(e.target.value)}
+                              />
+                            )
                           } else if (typeof v === 'boolean') {
                             control = (
                               <label className="dshj-check">
@@ -562,18 +654,19 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
                               <input
                                 className="dshj-input"
                                 type={p && p.type === 'password' ? 'password' : 'text'}
+                                placeholder={p && p.description ? p.description : undefined}
                                 value={String(v === undefined || v === null ? '' : v)}
                                 onChange={(e) => set(e.target.value)}
                               />
                             )
                           }
                           // 与「服务器 / Job 列表」行一致的栅格：左侧 label（右对齐、定宽），右侧 value（铺满）；
-                          // 描述单独占一行（grid 第二行），不影响 label 与 value 的水平对齐
+                          // 描述提示：输入框/下拉框类型已放入 placeholder（不占行），布尔类型仍单独占一行（grid 第二行）
                           return (
                             <div key={k} className="dshj-form-field">
                               <label className="dshj-form-label" title={k}>{k}</label>
                               {control}
-                              {p && p.description ? <div className="dshj-form-desc">{p.description}</div> : null}
+                              {p && p.description && !descInControl ? <div className="dshj-form-desc">{p.description}</div> : null}
                             </div>
                           )
                         })}

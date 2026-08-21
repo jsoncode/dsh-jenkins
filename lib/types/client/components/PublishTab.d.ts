@@ -8,7 +8,7 @@
  * 走 trigger 通道（用户手动选服务器 / Job / 参数）。
  */
 import type { ReactNode } from 'react';
-import { type StorageApi } from '../storage.ts';
+import { type HistoryEntry, type StorageApi } from '../storage.ts';
 import type { RunFn } from '../rpc.ts';
 import type { Poller } from '../poller.ts';
 /** DSH 工作区条目（与 modal 的 useWorkspaces 返回形状一致）。 */
@@ -27,6 +27,8 @@ export interface PublishTabProps {
     onCountChange?: (count: number) => void;
     /** 上报本 tab 的 footer 操作按钮（由弹框渲染在固定 footer 区；null/undefined 表示无）。 */
     onFooter?: (node: ReactNode) => void;
+    /** 打开指定发布条目的构建日志（父弹框切到「历史」tab 并弹出日志）。 */
+    onOpenLog?: (entry: HistoryEntry) => void;
 }
-export declare function PublishTab({ initialCwd, sessionId, run, poller, storage, workspaceItems, onCountChange, onFooter }: PublishTabProps): import("react").JSX.Element;
+export declare function PublishTab({ initialCwd, sessionId, run, poller, storage, workspaceItems, onCountChange, onFooter, onOpenLog }: PublishTabProps): import("react").JSX.Element;
 //# sourceMappingURL=PublishTab.d.ts.map

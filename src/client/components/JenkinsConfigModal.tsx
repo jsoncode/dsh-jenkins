@@ -9,12 +9,12 @@
  * 三个 tab 共享同一份上下文。
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { t } from '../i18n.ts'
 import type { RunFn } from '../rpc.ts'
 import type { Poller } from '../poller.ts'
-import type { StorageApi } from '../storage.ts'
+import type { StorageApi, HistoryEntry } from '../storage.ts'
 import { ErrorBoundary } from './ErrorBoundary.tsx'
 import { PublishTab } from './PublishTab.tsx'
 import { SettingsPage } from './SettingsPage.tsx'
@@ -46,6 +46,23 @@ export function JenkinsConfigModal({ run, poller, storage, useOpen, close, useWo
   const [configCount, setConfigCount] = useState(0) // 「配置」tab：已配置服务器数
   const [historyCount, setHistoryCount] = useState(0) // 「历史」tab：发布历史条数
   const [footerNode, setFooterNode] = useState<ReactNode>(null) // 当前 tab 上报的 footer 内容（无内容时不渲染 footer 栏）
+  const [logTarget, setLogTarget] = useState<HistoryEntry | null>(null) // 跨 tab 的构建日志目标（发布 tab → 历史 tab）
+  // 打开指定条目的构建日志：切到「历史」tab 并定位弹框
+  const openLog = useCallback((entry: HistoryEntry) => {
+    setLogTarget(entry)
+    setTab('history')
+  }, [])
+  // 切换到其他 tab 时清空日志目标，避免切回「历史」时旧日志弹框再次弹出
+  useEffect(() => { if (tab !== 'history') setLogTarget(null) }, [tab])
+  // 每次打开弹框回到「发布」tab：进行中任务列表在「请先选择 Job」引导区实时展示
+  const prevOpenRef = useRef(open)
+  useEffect(() => {
+    if (open && !prevOpenRef.current) {
+      setTab('publish')
+      setLogTarget(null)
+    }
+    prevOpenRef.current = open
+  }, [open])
   // 稳定引用：子组件 effect 依赖它，避免父组件每次渲染重建导致子组件 effect 反复触发
   const reportFooter = useCallback((node: ReactNode) => { setFooterNode(node) }, [])
   const workspaceItems = useWorkspaces
@@ -101,7 +118,7 @@ export function JenkinsConfigModal({ run, poller, storage, useOpen, close, useWo
         <div className="dshj-modal-body dshj-config-body">
           {tab === 'publish' ? (
             <ErrorBoundary label="PublishTab">
-              <PublishTab initialCwd={cwd} sessionId={sessionId} run={run} poller={poller} storage={storage} workspaceItems={workspaceItems} onCountChange={setConfigCount} onFooter={reportFooter} />
+              <PublishTab initialCwd={cwd} sessionId={sessionId} run={run} poller={poller} storage={storage} workspaceItems={workspaceItems} onCountChange={setConfigCount} onFooter={reportFooter} onOpenLog={openLog} />
             </ErrorBoundary>
           ) : tab === 'config' ? (
             <ErrorBoundary label="SettingsPage">
@@ -109,7 +126,7 @@ export function JenkinsConfigModal({ run, poller, storage, useOpen, close, useWo
             </ErrorBoundary>
           ) : (
             <ErrorBoundary label="HistoryTab">
-              <HistoryTab cwd={cwd} sessionId={sessionId} run={run} poller={poller} storage={storage} onCountChange={setHistoryCount} onFooter={reportFooter} />
+              <HistoryTab cwd={cwd} sessionId={sessionId} run={run} poller={poller} storage={storage} onCountChange={setHistoryCount} onFooter={reportFooter} logTarget={logTarget} onLogTargetChange={setLogTarget} />
             </ErrorBoundary>
           )}
         </div>

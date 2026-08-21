@@ -2,7 +2,7 @@
  * dsh-jenkins —— 操作分发（命令与模型工具共用）：runOp 全部分支。
  *
  * 分支：workspaceConfig / workspaceTrigger / list / save / delete / test /
- * jobs / jobDetail / trigger / queueStatus / buildStatus。
+ * jobs / jobDetail / trigger / queueStatus / buildStatus / buildLog / cancel。
  */
 import type { HostCtxLike } from './jenkins.ts';
 import type { OpRequest, OpResult, ServerConfig } from './types.ts';

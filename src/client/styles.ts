@@ -46,6 +46,7 @@ export const css = [
   '.dshj-link-btn{border:none;background:transparent;color:var(--dsw-alias-brand-primary,#1668e3);font-size:13px;cursor:pointer;padding:6px 10px;border-radius:6px;text-decoration:none}',
   '.dshj-link-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.12));text-decoration:underline}',
   '.dshj-link-btn:disabled{opacity:.5;cursor:not-allowed}',
+  '.dshj-link-btn-disabled{opacity:.5;cursor:not-allowed;text-decoration:none}',
   // 长横线 label（如 "---"）渲染的虚线分割线：与「Job 列表」下方分割线同风格，备注文本居中
   '.dshj-form-divider{display:flex;align-items:center;gap:10px;margin:16px 0 6px}',
   '.dshj-form-divider::before,.dshj-form-divider::after{content:"";flex:1;height:0;border-top:1px dashed var(--dsw-alias-border-l3,#bbb)}',
@@ -78,7 +79,11 @@ export const css = [
   '.dshj-server-label{font-size:12px;font-weight:500;color:var(--dsw-alias-label-secondary,#666);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
   '.dshj-server-ctrl{display:flex;align-items:center;gap:8px;min-width:0}',
   '.dshj-server-ctrl .dshj-combo{flex:1;min-width:0}',
-  '.dshj-job-count{flex:none;font-size:12px;color:var(--dsw-alias-label-secondary,#888);white-space:nowrap}',
+  // 「发布」tab 服务器 / Job 行：右侧按钮与文案区固定 120px 等宽，两行下拉框因此完全等宽
+  '.dshj-server-side{flex:none;width:120px;box-sizing:border-box;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+  '.dshj-server-side.dshj-btn{padding-left:4px;padding-right:4px}',
+  '.dshj-server-side.dshj-job-count{display:inline-flex;align-items:center;justify-content:center;margin:0;font-size:12px;color:var(--dsw-alias-label-secondary,#888)}',
+  '.dshj-server-side-empty{color:var(--dsw-alias-label-tertiary,#aaa)}',
   '.dshj-divider{border-top:1px dashed var(--dsw-alias-border-l3,#bbb);margin:14px 18px 2px;flex:none}',
   '.dshj-picker{display:flex;align-items:center;gap:8px;width:100%;height:34px;padding:0 12px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2,#ccc);border-radius:8px;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#222);font-size:13px;font-family:inherit;cursor:pointer;transition:border-color .15s,box-shadow .15s}',
   '.dshj-picker:hover:not(:disabled){border-color:var(--dsw-alias-border-l3,#b8b8b8)}',
@@ -100,9 +105,19 @@ export const css = [
   '.dshj-combo-item-selected{color:var(--dsw-alias-brand-primary,#1668e3);font-weight:500}',
   '.dshj-combo-check{flex:none;font-size:12px}',
   '.dshj-combo-empty{padding:14px;text-align:center;color:var(--dsw-alias-label-tertiary,#999);font-size:13px}',
-  // JSON 弹框：就地渲染（不 portal），遮罩盖在主弹框之上，点击只关 JSON 弹框、不影响主弹框
+  // JSON 弹框：就地渲染（不 portal），遮罩盖在主弹框之上，点击只关 JSON 弹框、不影响主弹框。
+  // body 改 flex 列 + 隐藏溢出、代码区 flex:1 独占滚动：避免 body 与 pre 出现双滚动条
   '.dshj-json-backdrop{z-index:1100}',
   '.dshj-json-modal{width:min(620px,100%);height:min(72vh,520px);min-height:360px}',
+  '.dshj-json-modal .dshj-modal-body{display:flex;flex-direction:column;overflow:hidden;padding:14px 16px}',
+  '.dshj-json-modal .dshj-code{flex:1;min-height:0;max-height:none;margin:0}',
+  // 清空历史确认弹框：小号宽度，层级高于日志/JSON 弹框，避免叠放时被遮挡；
+  // 覆盖基础弹框的 min-height:400px 与空态大内边距，高度随内容自适应、更紧凑
+  '.dshj-confirm-backdrop{z-index:1150}',
+  '.dshj-confirm-modal{width:min(420px,100%);min-height:auto;height:auto}',
+  '.dshj-confirm-modal .dshj-modal-body{padding:8px 18px 12px}',
+  '.dshj-confirm-modal .dshj-empty{padding:8px 4px;text-align:left;font-size:13px;line-height:1.6;color:var(--dsw-alias-label-primary,#222)}',
+  '.dshj-confirm-modal .dshj-modal-footer{padding:10px 18px}',
   // 「编辑 Jenkins 服务器」弹框：新增 / 编辑共用，宽度较窄，高度随内容自适应
   '.dshj-server-modal{width:min(480px,100%);max-height:80vh}',
   '.dshj-modal-body{flex:1;overflow-y:auto;padding:16px 18px;min-width:0;min-height:0}',
@@ -114,14 +129,21 @@ export const css = [
   // 原弹框内的 server-field / divider 自带左右内边距，嵌入统一弹框 body 后在此抵消，避免双重缩进
   '.dshj-config-body .dshj-server-field{padding:4px 0 0}',
   '.dshj-config-body .dshj-divider{margin:14px 0 2px}',
-  // 历史 tab「工作区」行：label 列改窄（168px → 96px），下拉框占更宽
-  '.dshj-config-body .dshj-history-ws-field{grid-template-columns:96px minmax(0,1fr)}',
+  // 历史 tab「工作区」筛选行：无 label，下拉占满整行（覆盖 .dshj-server-field 的两列 grid）
+  '.dshj-config-body .dshj-history-ws-field{display:block;padding:4px 0 0}',
+  '.dshj-config-body .dshj-history-ws-field .dshj-combo{width:100%}',
   '.dshj-history-modal{min-height:420px;max-height:82vh;width:640px}',
   '.dshj-history-list{display:flex;flex-direction:column;gap:10px;padding:14px 2px 4px}',
-  '.dshj-history-item{border:1px solid var(--dsw-alias-border-l1,#eee);border-radius:10px;padding:10px 14px;background:var(--dsw-alias-bg-base,#fff);transition:border-color .15s,background .15s,transform .15s}',
-  '.dshj-history-item-clickable{cursor:pointer}',
-  '.dshj-history-item-clickable:hover{border-color:var(--dsw-alias-brand-primary,#1668e3);background:color-mix(in srgb,var(--dsw-alias-brand-primary,#1668e3) 5%,var(--dsw-alias-bg-base,#fff))}',
-  '.dshj-history-item-clickable:hover .dshj-history-main{color:var(--dsw-alias-brand-primary,#1668e3)}',
+  '.dshj-history-item{border:1px solid var(--dsw-alias-border-l1,#eee);border-radius:10px;padding:10px 14px;background:var(--dsw-alias-bg-base,#fff);transition:border-color .15s,background .15s}',
+  '.dshj-history-item:hover{border-color:var(--dsw-alias-border-l2,#ddd)}',
+  // 历史条目操作按钮行：查看详情（打开日志弹框）/ 打开原始任务（浏览器跳转 Jenkins）
+  '.dshj-history-actions{display:flex;align-items:center;gap:8px;margin-top:9px;flex-wrap:wrap}',
+  // 历史列表分页条：共 N 条 · 每页条数切换 · 上一页/下一页
+  '.dshj-pagination{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:12px 2px 4px;flex:none;flex-wrap:wrap}',
+  '.dshj-pagination-info{font-size:12px;color:var(--dsw-alias-label-secondary,#888);margin-right:auto}',
+  '.dshj-pagination-size-label{font-size:12px;color:var(--dsw-alias-label-secondary,#888);white-space:nowrap}',
+  '.dshj-pagination-size{width:72px;padding:4px 22px 4px 10px;font-size:12px;border-radius:6px}',
+  '.dshj-pagination-page{font-size:12px;color:var(--dsw-alias-label-secondary,#888);white-space:nowrap}',
   '.dshj-history-head{display:flex;align-items:center;justify-content:space-between;gap:8px}',
   '.dshj-history-time{font-size:12px;color:var(--dsw-alias-label-tertiary,#999)}',
   '.dshj-history-result{font-size:11px;font-weight:600;padding:2px 10px;border-radius:999px;white-space:nowrap;flex:none;margin:0}',
@@ -133,13 +155,40 @@ export const css = [
   '.dshj-history-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}',
   '.dshj-chip{font-size:11px;color:var(--dsw-alias-label-secondary,#888);background:var(--dsw-alias-bg-layer-2,#f5f6f8);border:1px solid var(--dsw-alias-border-l1,#eee);padding:1px 9px;border-radius:999px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}',
   '.dshj-chip-ws{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}',
-  '.dshj-history-params{font-size:12px;color:var(--dsw-alias-label-tertiary,#999);margin-top:7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;word-break:keep-all}',
-  // 构建日志弹框
-  '.dshj-log-modal{width:min(880px,100%);height:min(78vh,640px);min-height:420px}',
+  // 参数行：文本省略 + 右侧「复制参数(JSON)」图标按钮
+  '.dshj-history-params-row{display:flex;align-items:center;gap:4px;margin-top:7px;min-width:0}',
+  '.dshj-history-params{flex:1;min-width:0;font-size:12px;color:var(--dsw-alias-label-tertiary,#999);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;word-break:keep-all;margin:0}',
+  '.dshj-history-params-copy{flex:none;width:20px;height:20px;color:var(--dsw-alias-label-secondary,#888)}',
+  '.dshj-history-params-copy:hover{color:var(--dsw-alias-brand-primary,#1668e3)}',
+  '.dshj-history-params-copy.dshj-btn-icon{width:20px;height:20px;border-radius:5px}',
+  // 构建日志弹框（宽度比 880px 的「Jenkins 配置」弹框小，居中时露出配置弹框边缘，避免完全重叠）
+  '.dshj-log-modal{width:min(720px,100%);height:min(78vh,640px);min-height:420px}',
+  // 网页全屏：fixed 铺满视口（相对 viewport 定位，不受遮罩 padding 影响），非系统全屏
+  '.dshj-log-fullscreen{position:fixed;inset:0;width:auto;height:auto;max-width:none;max-height:none;min-height:0;border-radius:0;border:none;box-shadow:none}',
+  '.dshj-log-fullscreen .dshj-modal-body{padding:14px 18px}',
   '.dshj-log-body{display:flex;flex-direction:column;overflow:hidden;padding:14px 16px}',
   '.dshj-log-body .dshj-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}',
   '.dshj-log-code{flex:1;min-height:0;max-height:none;margin:0;overflow:auto}',
   '.dshj-log-truncated{font-size:12px;color:var(--dsw-alias-state-warn-primary,#b8860b);margin-top:8px;flex:none}',
+  // 实时刷新指示：footer 左侧（margin-right:auto 把操作按钮推到右侧）+ 标题内小胶囊
+  '.dshj-log-live{margin-right:auto;font-size:12px;color:var(--dsw-alias-state-success-primary,#2a7d3c);display:inline-flex;align-items:center;gap:6px;flex:none}',
+  '.dshj-log-live::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--dsw-alias-state-success-primary,#2a7d3c);animation:dshj-live-pulse 1.2s ease-in-out infinite}',
+  '@keyframes dshj-live-pulse{0%,100%{opacity:1}50%{opacity:.35}}',
+  '.dshj-log-live-tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:var(--dsw-alias-state-success-primary,#2a7d3c);background:color-mix(in srgb,var(--dsw-alias-state-success-primary,#2a7d3c) 12%,transparent);border-radius:999px;padding:1px 8px;margin-left:8px;vertical-align:1px}',
+  '.dshj-log-cancel-msg{font-size:12px;margin-right:auto;flex:none;word-break:break-all}',
+  '.dshj-log-cancel-msg-ok{color:var(--dsw-alias-state-success-primary,#2a7d3c)}',
+  '.dshj-log-cancel-msg-err{color:var(--dsw-alias-state-error-primary,#d33)}',
+  // 发布 tab「请先选择 Job」引导区：进行中任务简洁列表
+  '.dshj-inflight{padding:16px 2px 4px}',
+  '.dshj-select-hint{font-size:13px;color:var(--dsw-alias-label-secondary,#888);margin-bottom:6px}',
+  '.dshj-inflight-title{font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary,#666);margin:6px 0 8px}',
+  '.dshj-inflight-list{display:flex;flex-direction:column;gap:8px}',
+  '.dshj-inflight-item{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;padding:8px 12px;border:1px solid var(--dsw-alias-border-l1,#eee);border-radius:10px;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#222);font-size:13px;font-family:inherit;cursor:pointer;transition:border-color .15s,background .15s}',
+  '.dshj-inflight-item:hover{border-color:var(--dsw-alias-brand-primary,#1668e3);background:color-mix(in srgb,var(--dsw-alias-brand-primary,#1668e3) 5%,var(--dsw-alias-bg-base,#fff))}',
+  '.dshj-inflight-main{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+  '.dshj-inflight-meta{display:flex;align-items:center;gap:6px;flex:none;max-width:45%;overflow:hidden}',
+  '.dshj-inflight-meta .dshj-history-result{margin:0;flex:none}',
+  '.dshj-inflight-meta .dshj-chip{flex:none}',
   '.dshj-spinner{width:14px;height:14px;border-radius:50%;border:2px solid var(--dsw-alias-border-l2,#ccc);border-top-color:var(--dsw-alias-brand-primary,#1668e3);animation:dshj-spin .8s linear infinite;margin:12px 0}',
   '@keyframes dshj-spin{to{transform:rotate(360deg)}}',
   '.dshj-run-title{font-size:15px;font-weight:600;margin-bottom:8px}',
