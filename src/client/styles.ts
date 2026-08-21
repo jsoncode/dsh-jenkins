@@ -108,6 +108,8 @@ export const css = [
   // 「编辑 Jenkins 服务器」弹框：新增 / 编辑共用，宽度较窄，高度随内容自适应
   '.dshj-server-modal{width:min(480px,100%);max-height:80vh}',
   '.dshj-modal-body{flex:1;overflow-y:auto;padding:16px 18px;min-width:0;min-height:0}',
+  // 弹框 footer：操作按钮区，右对齐、顶部细分隔线；flex:none 固定不随 body 滚动
+  '.dshj-modal-footer{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:12px 18px;border-top:1px solid var(--dsw-alias-border-l1,#eee);flex:none;flex-wrap:wrap}',
   // 统一「Jenkins 配置」弹框（发布 / 配置 / 历史 三 tab）：高度随内容自适应，最高 80vh，body 内部滚动
   '.dshj-config-modal{width:min(880px,100%);max-height:80vh;min-height:480px}',
   '.dshj-config-body{padding:14px 18px 18px}',
