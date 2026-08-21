@@ -8,7 +8,8 @@
  * 走 trigger 通道（用户手动选服务器 / Job / 参数）。
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { fmtDur, LANG, t, tErr } from '../i18n.ts'
 import { matchServer, type CachedLaunch, type StorageApi } from '../storage.ts'
 import type { RunFn } from '../rpc.ts'
@@ -79,9 +80,11 @@ export interface PublishTabProps {
   storage: StorageApi
   workspaceItems: WorkspaceItem[]
   onCountChange?: (count: number) => void
+  /** 上报本 tab 的 footer 操作按钮（由弹框渲染在固定 footer 区；null/undefined 表示无）。 */
+  onFooter?: (node: ReactNode) => void
 }
 
-export function PublishTab({ initialCwd, sessionId, run, poller, storage, workspaceItems, onCountChange }: PublishTabProps) {
+export function PublishTab({ initialCwd, sessionId, run, poller, storage, workspaceItems, onCountChange, onFooter }: PublishTabProps) {
   // 项目列表：工作区路径（去空、去重、保持顺序）
   const paths = [...new Set((Array.isArray(workspaceItems) ? workspaceItems : [])
     .map((w) => (w && typeof w.path === 'string' ? w.path : ''))
@@ -118,12 +121,12 @@ export function PublishTab({ initialCwd, sessionId, run, poller, storage, worksp
           onChange={(id) => setProject(id)}
         />
       </div>
-      <LauncherContent cwd={project} sessionId={sessionId} config={config} run={run} poller={poller} storage={storage} onCountChange={onCountChange} />
+      <LauncherContent cwd={project} sessionId={sessionId} config={config} run={run} poller={poller} storage={storage} onCountChange={onCountChange} onFooter={onFooter} />
     </>
   )
 }
 
-function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCountChange }: {
+function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCountChange, onFooter }: {
   cwd: string
   sessionId: string
   config: WorkspaceConfig | null
@@ -131,6 +134,7 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
   poller: Poller
   storage: StorageApi
   onCountChange?: (count: number) => void
+  onFooter?: (node: ReactNode) => void
 }) {
   // 配置数组：每个元素 = { job, server, parameters }（server 即发布目标/环境标识）
   const entries = config && Array.isArray(config.entries) ? config.entries : []
@@ -375,6 +379,11 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
       setSubmitting(false)
     }
   }
+  // 稳定包装：footer 按钮经它触发「最新一次渲染」的 onSubmit；onSubmit 本身每次渲染重建，
+  // 直接进 useMemo 依赖会导致 footer 节点引用不稳定、父组件 setState 循环。
+  const onSubmitRef = useRef(onSubmit)
+  onSubmitRef.current = onSubmit
+  const stableSubmit = useCallback(() => { void onSubmitRef.current() }, [])
 
   const serverParamsByName: Record<string, ParamDef> = {}
   if (detail && Array.isArray(detail.params)) {
@@ -397,6 +406,34 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
     if (IS_DASH_LABEL.test(k)) item.submitted = false
     formParamsJson[k] = item
   }
+
+  // footer 操作按钮：运行态 = 返回参数（+ 完成后重新构建）；表单态 = 查看参数 + 触发构建。
+  // useMemo 保证节点引用只在状态实际变化时更新，配合父组件 setState 引用比较避免渲染循环。
+  const footerNode = useMemo<ReactNode>(() => {
+    if (runState) {
+      return (
+        <>
+          <button type="button" className="dshj-btn" onClick={() => setRunState(null)}>{t('backParams')}</button>
+          {runState.phase === 'done' ? (
+            <button type="button" className="dshj-btn dshj-btn-primary" onClick={stableSubmit}>{t('rebuild')}</button>
+          ) : null}
+        </>
+      )
+    }
+    if (!selectedJobPath) return null
+    return (
+      <>
+        <button type="button" className="dshj-link-btn" disabled={submitting} onClick={() => setParamsOpen(true)}>{t('viewParams')}</button>
+        <button type="button" className="dshj-btn dshj-btn-primary" disabled={submitting} onClick={stableSubmit}>{submitting ? t('submitting') : t('submit')}</button>
+      </>
+    )
+  }, [runState, selectedJobPath, submitting, stableSubmit])
+
+  // 上报 footer；卸载时清空。onFooter 由父组件 useCallback 稳定，effect 只随 footerNode 变化触发。
+  useEffect(() => {
+    onFooter?.(footerNode)
+    return () => onFooter?.(null)
+  }, [footerNode, onFooter])
 
   return (
     <>
@@ -472,10 +509,6 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
               {runState.url ? <a className="dshj-link" href={runState.url} target="_blank" rel="noopener noreferrer">{t('openPage')}</a> : null}
             </div>
           ) : null}
-          <div className="dshj-form-ops">
-            <button type="button" className="dshj-btn" onClick={() => setRunState(null)}>{t('backParams')}</button>
-            {runState.phase === 'done' ? <button type="button" className="dshj-btn dshj-btn-primary" onClick={onSubmit}>{t('rebuild')}</button> : null}
-          </div>
         </div>
       )
         : !selectedJobPath ? <div className="dshj-empty">{t('selectJobFirst')}</div>
@@ -548,10 +581,6 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
                     )}
               {detailError && formKeys.length > 0 ? <div className="dshj-err">{detailError}</div> : null}
               {actionError ? <div className="dshj-err">{actionError}</div> : null}
-              <div className="dshj-form-ops dshj-submit-row">
-                <button type="button" className="dshj-btn dshj-btn-primary" disabled={submitting} onClick={onSubmit}>{submitting ? t('submitting') : t('submit')}</button>
-                <button type="button" className="dshj-link-btn" disabled={submitting} onClick={() => setParamsOpen(true)}>{t('viewParams')}</button>
-              </div>
             </div>
           )}
       {paramsOpen ? (

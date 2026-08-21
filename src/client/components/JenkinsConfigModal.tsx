@@ -9,7 +9,8 @@
  * 三个 tab 共享同一份上下文。
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { t } from '../i18n.ts'
 import type { RunFn } from '../rpc.ts'
 import type { Poller } from '../poller.ts'
@@ -44,6 +45,9 @@ export function JenkinsConfigModal({ run, poller, storage, useOpen, close, useWo
   const [tab, setTab] = useState<ConfigTab>('publish')
   const [configCount, setConfigCount] = useState(0) // 「配置」tab：已配置服务器数
   const [historyCount, setHistoryCount] = useState(0) // 「历史」tab：发布历史条数
+  const [footerNode, setFooterNode] = useState<ReactNode>(null) // 当前 tab 上报的 footer 内容（无内容时不渲染 footer 栏）
+  // 稳定引用：子组件 effect 依赖它，避免父组件每次渲染重建导致子组件 effect 反复触发
+  const reportFooter = useCallback((node: ReactNode) => { setFooterNode(node) }, [])
   const workspaceItems = useWorkspaces
     ? (useWorkspaces((s) => (s && s.items) || []) as WorkspaceItem[])
     : []
@@ -97,7 +101,7 @@ export function JenkinsConfigModal({ run, poller, storage, useOpen, close, useWo
         <div className="dshj-modal-body dshj-config-body">
           {tab === 'publish' ? (
             <ErrorBoundary label="PublishTab">
-              <PublishTab initialCwd={cwd} sessionId={sessionId} run={run} poller={poller} storage={storage} workspaceItems={workspaceItems} onCountChange={setConfigCount} />
+              <PublishTab initialCwd={cwd} sessionId={sessionId} run={run} poller={poller} storage={storage} workspaceItems={workspaceItems} onCountChange={setConfigCount} onFooter={reportFooter} />
             </ErrorBoundary>
           ) : tab === 'config' ? (
             <ErrorBoundary label="SettingsPage">
@@ -105,10 +109,11 @@ export function JenkinsConfigModal({ run, poller, storage, useOpen, close, useWo
             </ErrorBoundary>
           ) : (
             <ErrorBoundary label="HistoryTab">
-              <HistoryTab cwd={cwd} sessionId={sessionId} run={run} poller={poller} storage={storage} onCountChange={setHistoryCount} />
+              <HistoryTab cwd={cwd} sessionId={sessionId} run={run} poller={poller} storage={storage} onCountChange={setHistoryCount} onFooter={reportFooter} />
             </ErrorBoundary>
           )}
         </div>
+        {footerNode ? <div className="dshj-modal-footer">{footerNode}</div> : null}
       </div>
     </div>
   )

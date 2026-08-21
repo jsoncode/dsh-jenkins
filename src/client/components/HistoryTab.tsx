@@ -4,7 +4,8 @@
  * 内容来自原「发布历史」弹框，去掉弹框外框，由 JenkinsConfigModal 提供容器。
  */
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { t } from '../i18n.ts'
 import { type HistoryEntry, type StorageApi } from '../storage.ts'
 import type { RunFn } from '../rpc.ts'
@@ -19,18 +20,20 @@ export interface HistoryTabProps {
   poller: Poller
   storage: StorageApi
   onCountChange?: (count: number) => void
+  /** 上报本 tab 的 footer 操作按钮（由弹框渲染在固定 footer 区；null/undefined 表示无）。 */
+  onFooter?: (node: ReactNode) => void
 }
 
-export function HistoryTab({ cwd, sessionId, run, poller, storage, onCountChange }: HistoryTabProps) {
+export function HistoryTab({ cwd, sessionId, run, poller, storage, onCountChange, onFooter }: HistoryTabProps) {
   const [filter, setFilter] = useState('all')
   const [list, setList] = useState<HistoryEntry[]>([]) // 全量历史（每条含 cwd）
   const [logTarget, setLogTarget] = useState<HistoryEntry | null>(null)
-  const reload = (): void => {
+  const reload = useCallback((): void => {
     void storage.readAllHistory(sessionId).then((h) => {
       setList(h)
       if (onCountChange) onCountChange((h || []).length)
     }).catch(() => undefined)
-  }
+  }, [storage, sessionId, onCountChange])
   // 全局轮询器每次回填结果后刷新列表（进行中 → 完成实时可见）
   useEffect(() => poller.subscribe(reload), [poller, storage, sessionId])
   useEffect(() => {
@@ -54,6 +57,26 @@ export function HistoryTab({ cwd, sessionId, run, poller, storage, onCountChange
   }
   // 有构建号 + 服务器 id 才能拉取日志
   const canOpenLog = (e: HistoryEntry): boolean => !!e.buildNumber && !!e.serverId
+  // footer 操作按钮：有历史记录时显示「清空」；useMemo 保持引用稳定避免父组件渲染循环。
+  const footerNode = useMemo<ReactNode>(() => {
+    if (filtered.length === 0) return null
+    return (
+      <button
+        type="button"
+        className="dshj-btn dshj-btn-small dshj-btn-danger"
+        onClick={() => { void storage.clearHistory(sessionId, filter === 'all' ? null : filter).then(reload) }}
+      >
+        {t('historyClear')}
+      </button>
+    )
+  }, [filtered.length, filter, storage, sessionId, reload])
+
+  // 上报 footer；卸载时清空（与 PublishTab 同一模式）。
+  useEffect(() => {
+    onFooter?.(footerNode)
+    return () => onFooter?.(null)
+  }, [footerNode, onFooter])
+
   return (
     <>
       <div className="dshj-server-field dshj-history-ws-field">
@@ -96,21 +119,6 @@ export function HistoryTab({ cwd, sessionId, run, poller, storage, onCountChange
             })}
           </div>
         )}
-      {filtered.length > 0
-        ? (
-          <div className="dshj-history-ops">
-            <button
-              type="button"
-              className="dshj-btn dshj-btn-small dshj-btn-danger"
-              onClick={() => {
-                void storage.clearHistory(sessionId, filter === 'all' ? null : filter).then(reload)
-              }}
-            >
-              {t('historyClear')}
-            </button>
-          </div>
-        )
-        : null}
       {logTarget ? (
         <BuildLogModal entry={logTarget} run={run} sessionId={sessionId} onClose={() => setLogTarget(null)} />
       ) : null}

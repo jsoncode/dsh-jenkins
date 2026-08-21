@@ -7,6 +7,7 @@
  * （服务器下拉取配置交集、参数默认值、提交走 workspaceTrigger）；无配置时直接
  * 走 trigger 通道（用户手动选服务器 / Job / 参数）。
  */
+import type { ReactNode } from 'react';
 import { type StorageApi } from '../storage.ts';
 import type { RunFn } from '../rpc.ts';
 import type { Poller } from '../poller.ts';
@@ -24,6 +25,8 @@ export interface PublishTabProps {
     storage: StorageApi;
     workspaceItems: WorkspaceItem[];
     onCountChange?: (count: number) => void;
+    /** 上报本 tab 的 footer 操作按钮（由弹框渲染在固定 footer 区；null/undefined 表示无）。 */
+    onFooter?: (node: ReactNode) => void;
 }
-export declare function PublishTab({ initialCwd, sessionId, run, poller, storage, workspaceItems, onCountChange }: PublishTabProps): import("react").JSX.Element;
+export declare function PublishTab({ initialCwd, sessionId, run, poller, storage, workspaceItems, onCountChange, onFooter }: PublishTabProps): import("react").JSX.Element;
 //# sourceMappingURL=PublishTab.d.ts.map
