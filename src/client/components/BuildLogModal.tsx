@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from 'react'
 import { t, tErr } from '../i18n.ts'
+import { ansiToHtml } from '../ansi.ts'
 import type { RunFn } from '../rpc.ts'
 import type { HistoryEntry } from '../storage.ts'
 
@@ -84,8 +85,11 @@ export function BuildLogModal({ entry, run, sessionId, onClose }: BuildLogModalP
             <div className="dshj-empty">
               <div className="dshj-err">{error}</div>
             </div>
+          ) : log ? (
+            // ANSI 控制序列（颜色/加粗）转 HTML 渲染，还原终端配色
+            <pre className="dshj-code dshj-log-code" dangerouslySetInnerHTML={{ __html: ansiToHtml(log) }} />
           ) : (
-            <pre className="dshj-code dshj-log-code">{log || t('logEmpty')}</pre>
+            <pre className="dshj-code dshj-log-code">{t('logEmpty')}</pre>
           )}
           {truncated && !loading && !error ? (
             <div className="dshj-log-truncated">{t('logTruncated', { kb: MAX_LOG_KB })}</div>
