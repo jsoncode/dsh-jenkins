@@ -1,6 +1,6 @@
 {
   "name": "dsh-jenkins",
-  "version": "0.1.34",
+  "version": "0.1.35",
   "license": "MIT",
   "description": "Jenkins CLI plugin (dual-face): multi-server config page, model tools, and a per-workspace Run-Jenkins-Job entry with environment tabs. Bilingual UI (zh/en), no hardcoded paths, publishable to npm / GitHub",
   "type": "module",
