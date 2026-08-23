@@ -61,8 +61,9 @@ export const css = [
   '.dshj-footer-btn-rail{border-radius:50%;justify-content:center;gap:0;width:36px;height:36px;margin:8px 0 10px;padding:0}',
   '.dshj-footer-group{width:100%;min-width:0;position:relative}',
   '.dshj-footer-rail-group{width:auto;display:flex;flex-direction:column;align-items:center}',
-  // 图标：28px 圆形 Jenkins 红底徽标（object-fit:contain 保持 SVG 比例居中，透明区透出红底）
-  '.dshj-footer-logo{height:28px;width:28px;flex:none;display:block;object-fit:contain;background:color-mix(in srgb,#D33833 74%,transparent);border-radius:50%;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}',
+  // 图标：28px 圆形 Jenkins 红底徽标（object-fit:contain 保持 SVG 比例居中，透明区透出红底）；
+  // pointer-events:none 使右键穿透到父按钮，图片不响应指针事件 —— 浏览器不再出现「保存图片」菜单
+  '.dshj-footer-logo{height:28px;width:28px;flex:none;display:block;object-fit:contain;background:color-mix(in srgb,#D33833 74%,transparent);border-radius:50%;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);pointer-events:none}',
   '.dshj-footer-label{white-space:nowrap;overflow:hidden}',
   // 按钮右侧任务状态小胶囊：宽模式绝对定位在按钮右侧垂直居中（按钮右侧空白区，不遮挡文字）；
   // 窄栏（rail）无横向空间，改为堆叠在圆形图标下方居中
