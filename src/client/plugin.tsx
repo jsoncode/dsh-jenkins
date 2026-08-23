@@ -89,11 +89,12 @@ export function createPlugin(): ClientPluginModule {
 
       // ─── 侧边栏底部入口：常驻「Jenkins 配置」按钮（footer.action 区，
       //     渲染在 sidebar.settings（dsh 配置按钮）上方），打开统一弹框 ──
-      //     不传 order，使用宿主默认排序逻辑（此前基于插槽订阅的动态重算
-      //     存在自触发风险，已整体移除）。styles.ts 已把该列表容器改为纵向
+      //     order: 20 —— 宿主对 list 型插槽按声明 order 升序渲染
+      //     （dsh-client-ui-renderer：order ?? 0），显式固定本入口在
+      //     FooterActions 中的排位；styles.ts 已把该列表容器改为纵向
       //     堆叠，多个按钮各占一行、不挤在一行。
       slots.inject(FOOTER_SLOT, () => slots.register(
-        { name: FOOTER_SLOT, id: FOOTER_ENTRY_ID },
+        { name: FOOTER_SLOT, id: FOOTER_ENTRY_ID, order: 20 },
         (props: Record<string, unknown>) => (
           <FooterButton
             onOpen={() => configStore.open(true)}
