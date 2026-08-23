@@ -18,10 +18,12 @@ interface TestResult {
 export interface SettingsPageProps {
   run: RunFn
   sessionId: string
+  /** 当前工作区（模板「保存到工作区」的目标根目录）。 */
+  cwd?: string
   onCountChange?: (count: number) => void
 }
 
-export function SettingsPage({ run, sessionId, onCountChange }: SettingsPageProps) {
+export function SettingsPage({ run, sessionId, cwd, onCountChange }: SettingsPageProps) {
   const [servers, setServers] = useState<PublicServer[]>([])
   const [loading, setLoading] = useState(true)
   const [editor, setEditor] = useState<{ open: boolean; server: PublicServer | null }>({ open: false, server: null })
@@ -96,7 +98,7 @@ export function SettingsPage({ run, sessionId, onCountChange }: SettingsPageProp
           </button>
         </div>
       </div>
-      {templateOpen ? <TemplateModal onClose={() => setTemplateOpen(false)} /> : null}
+      {templateOpen ? <TemplateModal run={run} sessionId={sessionId} cwd={cwd || ''} onClose={() => setTemplateOpen(false)} /> : null}
       {editor.open ? (
         <ServerEditorModal
           run={run}

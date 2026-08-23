@@ -19,6 +19,7 @@ import { ErrorBoundary } from './ErrorBoundary.tsx'
 import { PublishTab } from './PublishTab.tsx'
 import { SettingsPage } from './SettingsPage.tsx'
 import { HistoryTab } from './HistoryTab.tsx'
+import { ModalPortal } from './ModalPortal.tsx'
 
 type ConfigTab = 'publish' | 'config' | 'history'
 
@@ -45,6 +46,7 @@ export function JenkinsConfigModal({ run, poller, storage, useOpen, close, useWo
   const [tab, setTab] = useState<ConfigTab>('publish')
   const [configCount, setConfigCount] = useState(0) // 「配置」tab：已配置服务器数
   const [historyCount, setHistoryCount] = useState(0) // 「历史」tab：发布历史条数
+  const [unreadCount, setUnreadCount] = useState(0) // 「历史」tab：未读条数（发布后未查看过历史 tab）
   const [footerNode, setFooterNode] = useState<ReactNode>(null) // 当前 tab 上报的 footer 内容（无内容时不渲染 footer 栏）
   const [logTarget, setLogTarget] = useState<HistoryEntry | null>(null) // 跨 tab 的构建日志目标（发布 tab → 历史 tab）
   // 打开指定条目的构建日志：切到「历史」tab 并定位弹框
@@ -83,55 +85,70 @@ export function JenkinsConfigModal({ run, poller, storage, useOpen, close, useWo
     run(sessionId, { op: 'list' }).then((r) => {
       if (r && r.ok) setConfigCount(((r.servers as unknown[]) || []).length)
     }).catch(() => { })
-    void storage.readAllHistory(sessionId).then((h) => setHistoryCount((h || []).length)).catch(() => { })
+    void storage.readAllHistory(sessionId).then((h) => {
+      const list = h || []
+      setHistoryCount(list.length)
+      setUnreadCount(list.filter((e) => e.unread).length)
+    }).catch(() => { })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
+  // 弹框打开期间订阅轮询器：新发布 / 构建完成 / 清除未读都会刷新计数与未读标记（关闭后取消订阅）
+  useEffect(() => {
+    if (!open) return
+    return poller.subscribe(() => {
+      void storage.readAllHistory(sessionId).then((h) => {
+        const list = h || []
+        setHistoryCount(list.length)
+        setUnreadCount(list.filter((e) => e.unread).length)
+      }).catch(() => { })
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, poller])
   if (!open) return null
   return (
-    <div className="dshj-backdrop" onClick={close}>
-      <div className="dshj-modal dshj-config-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="dshj-modal-header">
-          <div>
-            <div className="dshj-modal-title">{t('settingsNav')}</div>
-            <div className="dshj-modal-sub">{cwd || ''}</div>
-          </div>
-          <button type="button" className="dshj-close" aria-label={t('close')} title={t('close')} onClick={close}>✕</button>
+    <ModalPortal modalClass="dshj-config-modal" onBackdropClose={close}>
+      <div className="dshj-modal-header">
+        <div>
+          <div className="dshj-modal-title">{t('settingsNav')}</div>
+          <div className="dshj-modal-sub">{cwd || ''}</div>
         </div>
-        <div className="dshj-tabs" role="tablist">
-          {TABS.map((item) => {
-            const count = item.id === 'config' ? configCount : item.id === 'history' ? historyCount : 0
-            return (
-              <button
-                key={item.id}
-                type="button"
-                role="tab"
-                aria-selected={tab === item.id}
-                className={'dshj-tab' + (tab === item.id ? ' dshj-tab-active' : '')}
-                onClick={() => setTab(item.id)}
-              >
-                {item.label}
-                {count > 0 ? <span className="dshj-badge">{count}</span> : null}
-              </button>
-            )
-          })}
-        </div>
-        <div className="dshj-modal-body dshj-config-body">
-          {tab === 'publish' ? (
-            <ErrorBoundary label="PublishTab">
-              <PublishTab initialCwd={cwd} sessionId={sessionId} run={run} poller={poller} storage={storage} workspaceItems={workspaceItems} onCountChange={setConfigCount} onFooter={reportFooter} onOpenLog={openLog} />
-            </ErrorBoundary>
-          ) : tab === 'config' ? (
-            <ErrorBoundary label="SettingsPage">
-              <SettingsPage run={run} sessionId={sessionId} onCountChange={setConfigCount} />
-            </ErrorBoundary>
-          ) : (
-            <ErrorBoundary label="HistoryTab">
-              <HistoryTab cwd={cwd} sessionId={sessionId} run={run} poller={poller} storage={storage} onCountChange={setHistoryCount} onFooter={reportFooter} logTarget={logTarget} onLogTargetChange={setLogTarget} />
-            </ErrorBoundary>
-          )}
-        </div>
-        {footerNode ? <div className="dshj-modal-footer">{footerNode}</div> : null}
+        <button type="button" className="dshj-close" aria-label={t('close')} title={t('close')} onClick={close}>✕</button>
       </div>
-    </div>
+      <div className="dshj-tabs" role="tablist">
+        {TABS.map((item) => {
+          const count = item.id === 'config' ? configCount : item.id === 'history' ? historyCount : 0
+          return (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === item.id}
+              className={'dshj-tab' + (tab === item.id ? ' dshj-tab-active' : '')}
+              onClick={() => setTab(item.id)}
+            >
+              {item.label}
+              {item.id === 'history' && unreadCount > 0 ? <span className="dshj-tab-dot" title={t('unreadCount', { n: unreadCount })} /> : null}
+              {count > 0 ? <span className="dshj-badge">{count}</span> : null}
+            </button>
+          )
+        })}
+      </div>
+      <div className="dshj-modal-body dshj-config-body">
+        {tab === 'publish' ? (
+          <ErrorBoundary label="PublishTab">
+            <PublishTab initialCwd={cwd} sessionId={sessionId} run={run} poller={poller} storage={storage} workspaceItems={workspaceItems} onCountChange={setConfigCount} onFooter={reportFooter} onOpenLog={openLog} />
+          </ErrorBoundary>
+        ) : tab === 'config' ? (
+          <ErrorBoundary label="SettingsPage">
+            <SettingsPage run={run} sessionId={sessionId} cwd={cwd} onCountChange={setConfigCount} />
+          </ErrorBoundary>
+        ) : (
+          <ErrorBoundary label="HistoryTab">
+            <HistoryTab cwd={cwd} sessionId={sessionId} run={run} poller={poller} storage={storage} onCountChange={setHistoryCount} onFooter={reportFooter} logTarget={logTarget} onLogTargetChange={setLogTarget} />
+          </ErrorBoundary>
+        )}
+      </div>
+      {footerNode ? <div className="dshj-modal-footer">{footerNode}</div> : null}
+    </ModalPortal>
   )
 }

@@ -6,7 +6,9 @@ import type { RunFn } from '../rpc.ts';
 export interface SettingsPageProps {
     run: RunFn;
     sessionId: string;
+    /** 当前工作区（模板「保存到工作区」的目标根目录）。 */
+    cwd?: string;
     onCountChange?: (count: number) => void;
 }
-export declare function SettingsPage({ run, sessionId, onCountChange }: SettingsPageProps): import("react").JSX.Element;
+export declare function SettingsPage({ run, sessionId, cwd, onCountChange }: SettingsPageProps): import("react").JSX.Element;
 //# sourceMappingURL=SettingsPage.d.ts.map

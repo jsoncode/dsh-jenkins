@@ -217,7 +217,7 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
     (commands as CommandsService).register({
       name: 'dsh-jenkins',
       description: 'Jenkins CLI：管理服务器配置并触发/查询构建（设置界面/工作区入口调用）。Manage Jenkins servers and trigger/query builds (used by the settings UI and workspace entry). 参数为 JSON：'
-        + '{ "op": "list|save|delete|test|jobs|jobDetail|trigger|queueStatus|buildStatus|buildLog|cancel|cacheGet|cacheSet|workspaceConfig|workspaceTrigger", ... }。',
+        + '{ "op": "list|save|delete|test|jobs|jobDetail|trigger|queueStatus|buildStatus|buildLog|cancel|cacheGet|cacheSet|workspaceConfig|workspaceTrigger|saveTemplate", ... }。',
       input: { hint: '{"op":"list"}' },
       recordInput: true,
       handler: async (invocation: { rawInput?: string }): Promise<{ kind: 'success' | 'error'; text: string }> => {

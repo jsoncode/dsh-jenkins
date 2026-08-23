@@ -33,6 +33,8 @@ export interface HistoryEntry {
     since?: number;
     /** 触发时的会话 id（后台轮询经 commands.execute 复用） */
     sessionId?: string;
+    /** 未读标记：发布后未打开过「历史」tab 查看即为未读；打开历史 tab 时自动清除。 */
+    unread?: boolean;
 }
 export interface StorageApi {
     readCache(sessionId: string, cwd: string): Promise<CachedLaunch | null>;
@@ -41,6 +43,8 @@ export interface StorageApi {
     updateHistoryResult(sessionId: string, cwd: string, id: string, result: string): Promise<void>;
     updateHistoryPoll(sessionId: string, cwd: string, id: string, patch: Partial<Pick<HistoryEntry, 'buildNumber' | 'queueId' | 'url'>>): Promise<void>;
     readAllHistory(sessionId: string): Promise<HistoryEntry[]>;
+    /** 清除全部发布历史的未读标记（打开「历史」tab 时调用）。 */
+    markAllHistoryRead(sessionId: string): Promise<void>;
     clearHistory(sessionId: string, cwd: string | null): Promise<void>;
 }
 export declare function createStorage(run: RunFn): StorageApi;

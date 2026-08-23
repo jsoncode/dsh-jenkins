@@ -6,6 +6,7 @@
 import { useState } from 'react'
 import { t, tErr } from '../i18n.ts'
 import type { RunFn } from '../rpc.ts'
+import { ModalPortal } from './ModalPortal.tsx'
 
 export interface PublicServer {
   id: string
@@ -104,9 +105,8 @@ export function ServerEditorModal({ run, sessionId, server, onSaved, onClose }: 
     : ''
 
   return (
-    <div className="dshj-backdrop dshj-json-backdrop" onClick={onClose}>
-      <div className="dshj-modal dshj-server-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="dshj-modal-header">
+    <ModalPortal backdropClass="dshj-json-backdrop" modalClass="dshj-server-modal" onBackdropClose={onClose}>
+      <div className="dshj-modal-header">
           <div>
             <div className="dshj-modal-title">{isNew ? t('addTitle') : t('editTitle')}</div>
           </div>
@@ -155,7 +155,6 @@ export function ServerEditorModal({ run, sessionId, server, onSaved, onClose }: 
           <button type="button" className="dshj-btn" disabled={busy} onClick={onClose}>{t('cancelBtn')}</button>
           <button type="button" className="dshj-btn dshj-btn-primary" disabled={busy} onClick={doSave}>{t('saveBtn')}</button>
         </div>
-      </div>
-    </div>
+    </ModalPortal>
   )
 }

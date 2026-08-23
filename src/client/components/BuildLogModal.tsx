@@ -15,6 +15,7 @@ import type { RunFn } from '../rpc.ts'
 import type { HistoryEntry } from '../storage.ts'
 import type { Poller } from '../poller.ts'
 import { SvgCompress, SvgExpand } from './SvgIcons.tsx'
+import { ModalPortal } from './ModalPortal.tsx'
 
 const MAX_LOG_KB = 500
 const LOG_POLL_MS = 1000
@@ -172,9 +173,12 @@ export function BuildLogModal({ entry, run, sessionId, onClose, poller }: BuildL
   }
 
   return (
-    <div className="dshj-backdrop dshj-json-backdrop" onClick={onClose}>
-      <div className={'dshj-modal dshj-log-modal' + (fullscreen ? ' dshj-log-fullscreen' : '')} onClick={(e) => e.stopPropagation()}>
-        <div className="dshj-modal-header">
+    <ModalPortal
+      backdropClass="dshj-json-backdrop"
+      modalClass={'dshj-log-modal' + (fullscreen ? ' dshj-log-fullscreen' : '')}
+      onBackdropClose={onClose}
+    >
+      <div className="dshj-modal-header">
           <div>
             <div className="dshj-modal-title">
               {t('logTitle')}
@@ -244,7 +248,6 @@ export function BuildLogModal({ entry, run, sessionId, onClose, poller }: BuildL
             </a>
           ) : null}
         </div>
-      </div>
-    </div>
+    </ModalPortal>
   )
 }

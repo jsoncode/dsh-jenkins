@@ -14,6 +14,7 @@ import type { Poller } from '../poller.ts'
 import { BuildLogModal } from './BuildLogModal.tsx'
 import { InlineSelect, type InlineSelectOption } from './InlineSelect.tsx'
 import { SvgCheck, SvgCopy } from './SvgIcons.tsx'
+import { ModalPortal } from './ModalPortal.tsx'
 
 export interface HistoryTabProps {
   cwd: string
@@ -48,11 +49,17 @@ export function HistoryTab({ cwd, sessionId, run, poller, storage, onCountChange
   // 全局轮询器每次回填结果后刷新列表（进行中 → 完成实时可见）
   useEffect(() => poller.subscribe(reload), [poller, reload])
   useEffect(() => {
-    reload()
-    // tab 打开即唤醒一次扫描：空闲轮询下，遗留的进行中任务（如页面重载后）
-    // 需要在此被发现并恢复后台轮询，否则列表会一直停在「进行中」。
-    poller.refresh()
-  }, [reload, poller])
+    let alive = true
+    // 打开「历史」tab：先清除全部未读，再加载列表 —— 发布后未查看过的条目视为已读，
+    // 随后刷新一次扫描（汇总归零），驱动 footer 的「已完成（未读）」绿色胶囊与
+    // tab 未读点消失；同时唤醒空闲轮询（遗留的进行中任务在此被发现并恢复后台轮询）。
+    void storage.markAllHistoryRead(sessionId).catch(() => undefined).then(() => {
+      if (!alive) return
+      reload()
+      poller.refresh()
+    })
+    return () => { alive = false }
+  }, [reload, poller, storage, sessionId])
   // 工作区选项：仅列出曾经发布过的记录里的工作区（去重排序），外加「全部」
   const wsPaths = [...new Set(list.map((e) => e.cwd).filter((p): p is string => !!p))].sort()
   const wsOptions = [{ id: 'all', label: t('historyAll') }].concat(wsPaths.map((p) => ({ id: p, label: p })))
@@ -164,6 +171,8 @@ export function HistoryTab({ cwd, sessionId, run, poller, storage, onCountChange
                 <div key={e.id} className="dshj-history-item">
                   <div className="dshj-history-head">
                     <span className="dshj-history-time">{fmtTime(e.time)}</span>
+                    {/* 未读标记：发布后未打开过「历史」tab 查看的条目（打开后自动清除） */}
+                    {e.unread ? <span className="dshj-unread-tag">{t('unread')}</span> : null}
                     <span className={'dshj-history-result ' + resultClass(e.result)}>{e.result || t('historyPending')}</span>
                   </div>
                   <div className="dshj-history-main">{e.job + (e.env ? ' · ' + e.env : '')}</div>
@@ -236,26 +245,28 @@ export function HistoryTab({ cwd, sessionId, run, poller, storage, onCountChange
       ) : null}
       {/* 清空历史确认弹框：点击「清空」后先确认（显示清空范围），确认后才真正执行 */}
       {confirmClear ? (
-        <div className="dshj-backdrop dshj-json-backdrop dshj-confirm-backdrop" onClick={() => setConfirmClear(false)}>
-          <div className="dshj-modal dshj-confirm-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="dshj-modal-header">
-              <div>
-                <div className="dshj-modal-title">{t('confirmClearTitle')}</div>
-                <div className="dshj-modal-sub">{t('historyTitle')}</div>
-              </div>
-              <button type="button" className="dshj-close" aria-label={t('close')} title={t('close')} onClick={() => setConfirmClear(false)}>✕</button>
+        <ModalPortal
+          backdropClass="dshj-json-backdrop dshj-confirm-backdrop"
+          modalClass="dshj-confirm-modal"
+          onBackdropClose={() => setConfirmClear(false)}
+        >
+          <div className="dshj-modal-header">
+            <div>
+              <div className="dshj-modal-title">{t('confirmClearTitle')}</div>
+              <div className="dshj-modal-sub">{t('historyTitle')}</div>
             </div>
-            <div className="dshj-modal-body">
-              <div className="dshj-empty">
-                {filter === 'all' ? t('confirmClearAll') : t('confirmClearCwd', { path: filter })}
-              </div>
-            </div>
-            <div className="dshj-modal-footer">
-              <button type="button" className="dshj-btn" onClick={() => setConfirmClear(false)}>{t('cancelBtn')}</button>
-              <button type="button" className="dshj-btn dshj-btn-solid" onClick={doClear}>{t('confirmClear')}</button>
+            <button type="button" className="dshj-close" aria-label={t('close')} title={t('close')} onClick={() => setConfirmClear(false)}>✕</button>
+          </div>
+          <div className="dshj-modal-body">
+            <div className="dshj-empty">
+              {filter === 'all' ? t('confirmClearAll') : t('confirmClearCwd', { path: filter })}
             </div>
           </div>
-        </div>
+          <div className="dshj-modal-footer">
+            <button type="button" className="dshj-btn" onClick={() => setConfirmClear(false)}>{t('cancelBtn')}</button>
+            <button type="button" className="dshj-btn dshj-btn-solid" onClick={doClear}>{t('confirmClear')}</button>
+          </div>
+        </ModalPortal>
       ) : null}
     </>
   )

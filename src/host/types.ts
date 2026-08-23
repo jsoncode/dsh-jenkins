@@ -110,12 +110,22 @@ export interface SubprocessService {
   }>
 }
 
+/** 宿主 fs 沙箱执行策略（对齐 @deepseek-ai/dsh-sandbox 的 SandboxExecutionPolicy 最小视图）。 */
+export interface FsSandboxPolicy {
+  /** 文件效果模式：workspace-write 允许写入 workspaceRoot 与平台临时目录。 */
+  mode: 'read-only' | 'workspace-write' | 'danger-full-access'
+  /** workspace-write 模式下的可写根目录（绝对路径）。 */
+  workspaceRoot: string
+}
+
 /** 宿主 fs 服务最小视图。 */
 export interface FsService {
   resolve(name: string, opts?: { cwd: string }): Promise<string>
   stat(target: string): Promise<unknown>
   readText(target: string): Promise<string>
   processPath(target: string): string
+  /** 原子写入 UTF-8 文本（expected 省略 = 无条件覆盖；sandboxPolicy 控制写沙箱）。 */
+  writeText(target: string, content: string, expected?: unknown, signal?: unknown, sandboxPolicy?: FsSandboxPolicy): Promise<unknown>
 }
 
 /** 宿主 sandboxPolicy 最小视图。 */

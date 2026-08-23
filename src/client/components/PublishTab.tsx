@@ -16,6 +16,7 @@ import type { RunFn } from '../rpc.ts'
 import type { Poller } from '../poller.ts'
 import { ServerEditorModal } from './ServerEditorModal.tsx'
 import { InlineSelect, type InlineSelectOption } from './InlineSelect.tsx'
+import { ModalPortal } from './ModalPortal.tsx'
 
 interface Server {
   id: string
@@ -677,20 +678,18 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
             </div>
           )}
       {paramsOpen ? (
-        <div className="dshj-backdrop dshj-json-backdrop" onClick={() => setParamsOpen(false)}>
-          <div className="dshj-modal dshj-json-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="dshj-modal-header">
-              <div>
-                <div className="dshj-modal-title">{t('formParamsJson')}</div>
-                <div className="dshj-modal-sub">{selectedJobPath || ''}</div>
-              </div>
-              <button type="button" className="dshj-close" aria-label={t('close')} title={t('close')} onClick={() => setParamsOpen(false)}>✕</button>
+        <ModalPortal backdropClass="dshj-json-backdrop" modalClass="dshj-json-modal" onBackdropClose={() => setParamsOpen(false)}>
+          <div className="dshj-modal-header">
+            <div>
+              <div className="dshj-modal-title">{t('formParamsJson')}</div>
+              <div className="dshj-modal-sub">{selectedJobPath || ''}</div>
             </div>
-            <div className="dshj-modal-body">
-              <pre className="dshj-code">{JSON.stringify(formParamsJson, null, 2)}</pre>
-            </div>
+            <button type="button" className="dshj-close" aria-label={t('close')} title={t('close')} onClick={() => setParamsOpen(false)}>✕</button>
           </div>
-        </div>
+          <div className="dshj-modal-body">
+            <pre className="dshj-code">{JSON.stringify(formParamsJson, null, 2)}</pre>
+          </div>
+        </ModalPortal>
       ) : null}
       {addServerOpen ? (
         <ServerEditorModal

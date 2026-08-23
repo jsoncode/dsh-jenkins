@@ -1,0 +1,12 @@
+[
+  {
+    "job": "build-app",
+    "server": "http://uat.example.com",
+    "environments": { "BRANCH": "main", "DEPLOY": false }
+  },
+  {
+    "job": "build-app",
+    "server": "http://prod.example.com",
+    "environments": { "BRANCH": "release-1.0", "DEPLOY": true }
+  }
+]

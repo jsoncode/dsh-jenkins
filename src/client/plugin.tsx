@@ -101,6 +101,7 @@ export function createPlugin(): ClientPluginModule {
             reportSession={(s) => { if (s) sessionRef.current = s }}
             wide={props.wide as boolean | undefined}
             useSessions={props.useSessions as FooterWorkspaceHooks['useSessions']}
+            poller={poller}
           />
         ),
       ))

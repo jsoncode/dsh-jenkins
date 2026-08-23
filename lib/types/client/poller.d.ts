@@ -26,6 +26,13 @@ export interface LiveBuild {
     url?: string;
     since: number;
 }
+/** 任务数量汇总（footer 胶囊消费）：构建中（含排队）数量 + 已成功但未读的数量。 */
+export interface TaskSummary {
+    /** 进行中的任务数（result 为空且带轮询数据：排队 / 构建中）。 */
+    building: number;
+    /** 构建成功但尚未在「历史」tab 查看过的条数（打开历史后清零）。 */
+    successUnread: number;
+}
 export interface Poller {
     /** 触发一轮扫描（异步，可重复调用，内部防重入；空闲时直接返回，不发请求）。 */
     tick(): void;
@@ -33,6 +40,8 @@ export interface Poller {
     refresh(): void;
     subscribe(fn: () => void): () => void;
     getLive(entryId: string): LiveBuild | undefined;
+    /** 当前任务数量汇总（由最近一次扫描计算；footer 胶囊直接读取）。 */
+    getSummary(): TaskSummary;
 }
 export declare function createPoller(run: RunFn, storage: StorageApi, getSession: () => string): Poller;
 //# sourceMappingURL=poller.d.ts.map

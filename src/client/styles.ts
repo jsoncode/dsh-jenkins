@@ -59,11 +59,20 @@ export const css = [
   '.dshj-footer-btn{box-sizing:border-box;cursor:pointer;width:calc(100% + 4px);height:42px;color:var(--dsw-alias-label-primary);background:transparent;border:none;border-radius:12px;flex:none;align-items:center;gap:8px;margin:4px -2px;padding:0 10px 0 8px;font-family:inherit;font-size:14px;line-height:22px;display:flex;overflow:hidden}',
   '.dshj-footer-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}',
   '.dshj-footer-btn-rail{border-radius:50%;justify-content:center;gap:0;width:36px;height:36px;margin:8px 0 10px;padding:0}',
-  '.dshj-footer-group{width:100%;min-width:0}',
-  '.dshj-footer-rail-group{width:auto}',
+  '.dshj-footer-group{width:100%;min-width:0;position:relative}',
+  '.dshj-footer-rail-group{width:auto;display:flex;flex-direction:column;align-items:center}',
   // 图标：28px 圆形 Jenkins 红底徽标（object-fit:contain 保持 SVG 比例居中，透明区透出红底）
   '.dshj-footer-logo{height:28px;width:28px;flex:none;display:block;object-fit:contain;background:color-mix(in srgb,#D33833 74%,transparent);border-radius:50%;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}',
   '.dshj-footer-label{white-space:nowrap;overflow:hidden}',
+  // 按钮右侧任务状态小胶囊：宽模式绝对定位在按钮右侧垂直居中（按钮右侧空白区，不遮挡文字）；
+  // 窄栏（rail）无横向空间，改为堆叠在圆形图标下方居中
+  '.dshj-footer-caps{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:4px;z-index:2;pointer-events:none}',
+  '.dshj-footer-rail-group .dshj-footer-caps{position:static;transform:none;justify-content:center;margin-top:-4px}',
+  '.dshj-capsule{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 5px;border-radius:999px;font-size:10px;line-height:1;font-weight:700;font-variant-numeric:tabular-nums;box-sizing:border-box;white-space:nowrap}',
+  // 构建中：GitHub Action 构建中的琥珀橙（深色文字保证对比度）
+  '.dshj-capsule-building{color:#4a3500;background:#f0b429;border:1px solid color-mix(in srgb,#f0b429 60%,#fff)}',
+  // 构建成功（未读）：绿色实心胶囊，打开「历史」tab 后随未读清除而消失
+  '.dshj-capsule-done{color:#fff;background:var(--dsw-alias-state-success-primary,#2a7d3c);border:1px solid color-mix(in srgb,var(--dsw-alias-state-success-primary,#2a7d3c) 75%,#fff)}',
   // 宿主 sidebar.footer.action 列表容器：slots 渲染器为每个插槽输出稳定的
   // [data-slot] 锚点（display:contents，不参与布局），其父容器即宿主的
   // footer 行容器。宿主默认 flex 行布局会把多个插件注册的按钮挤在一行，
@@ -86,6 +95,9 @@ export const css = [
   '.dshj-tab-active:hover{background:color-mix(in srgb,var(--dshj-glass-fill) 64%,transparent)}',
   '.dshj-badge{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 5px;margin-left:6px;border-radius:999px;font-size:11px;line-height:1;font-weight:600;background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.15));color:var(--dsw-alias-label-secondary,#666)}',
   '.dshj-tab-active .dshj-badge{background:color-mix(in srgb,var(--dsw-alias-label-primary-foreground,#fff) 68%,transparent);color:var(--dsw-alias-button-primary-fill,var(--dsw-alias-brand-primary,#1668e3))}',
+  // 「历史」tab 未读指示点：存在发布后未查看的条目时显示在 tab 文字旁
+  '.dshj-tab-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-brand-primary,#1668e3);margin-left:6px;vertical-align:1px;flex:none}',
+  '.dshj-tab-active .dshj-tab-dot{background:var(--dsw-alias-label-primary-foreground,#fff)}',
   '.dshj-server-field{display:grid;grid-template-columns:168px minmax(0,1fr);align-items:center;gap:10px;padding:10px 18px 0;flex:none}',
   '.dshj-server-label{font-size:12px;font-weight:500;color:var(--dsw-alias-label-secondary,#666);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
   '.dshj-server-ctrl{display:flex;align-items:center;gap:8px;min-width:0}',
@@ -158,6 +170,9 @@ export const css = [
   '.dshj-pagination-page{font-size:12px;color:var(--dsw-alias-label-secondary,#888);white-space:nowrap}',
   '.dshj-history-head{display:flex;align-items:center;justify-content:space-between;gap:8px}',
   '.dshj-history-time{font-size:12px;color:var(--dsw-alias-label-tertiary,#999)}',
+  // 历史条目未读标记：蓝色小胶囊（带圆点），发布后未打开过「历史」tab 的条目显示
+  '.dshj-unread-tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:var(--dsw-alias-brand-primary,#1668e3);background:color-mix(in srgb,var(--dsw-alias-brand-primary,#1668e3) 10%,transparent);border-radius:999px;padding:1px 8px;flex:none;margin-right:auto}',
+  '.dshj-unread-tag::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor}',
   '.dshj-history-result{font-size:11px;font-weight:600;padding:2px 10px;border-radius:999px;white-space:nowrap;flex:none;margin:0}',
   '.dshj-history-result.dshj-ok{color:var(--dsw-alias-state-success-primary,#2a7d3c);background:color-mix(in srgb,var(--dsw-alias-state-success-primary,#2a7d3c) 14%,transparent)}',
   '.dshj-history-result.dshj-err{color:var(--dsw-alias-state-error-primary,#d33);background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#d33) 14%,transparent)}',
@@ -227,6 +242,7 @@ export const css = [
   '.dshj-template-title{font-size:13px;font-weight:600}',
   '.dshj-template-tabs{display:flex;gap:6px}',
   '.dshj-code-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}',
+  '.dshj-code-ops{display:flex;align-items:center;gap:8px;flex:none}',
   '.dshj-code-file{font-size:12px;color:var(--dsw-alias-label-secondary,#888);font-family:ui-monospace,SFMono-Regular,Consolas,monospace}',
   '.dshj-code{margin:0;padding:12px 14px;background:color-mix(in srgb,var(--dsw-alias-bg-base,#fff) 84%,transparent);border:1px solid var(--dsw-alias-border-l1);border-radius:8px;overflow:auto;max-height:52vh;font-size:12px;line-height:1.55;color:var(--dsw-alias-label-primary,#222);white-space:pre;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}',
   '.dshj-hint{font-size:12px;color:var(--dsw-alias-label-secondary,#888);margin-bottom:10px}',

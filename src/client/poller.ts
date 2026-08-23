@@ -30,6 +30,14 @@ export interface LiveBuild {
   since: number
 }
 
+/** 任务数量汇总（footer 胶囊消费）：构建中（含排队）数量 + 已成功但未读的数量。 */
+export interface TaskSummary {
+  /** 进行中的任务数（result 为空且带轮询数据：排队 / 构建中）。 */
+  building: number
+  /** 构建成功但尚未在「历史」tab 查看过的条数（打开历史后清零）。 */
+  successUnread: number
+}
+
 export interface Poller {
   /** 触发一轮扫描（异步，可重复调用，内部防重入；空闲时直接返回，不发请求）。 */
   tick(): void
@@ -37,6 +45,8 @@ export interface Poller {
   refresh(): void
   subscribe(fn: () => void): () => void
   getLive(entryId: string): LiveBuild | undefined
+  /** 当前任务数量汇总（由最近一次扫描计算；footer 胶囊直接读取）。 */
+  getSummary(): TaskSummary
 }
 
 const POLL_TIMEOUT_MS = 10 * 60 * 1000
@@ -46,13 +56,32 @@ export function createPoller(run: RunFn, storage: StorageApi, getSession: () => 
   const live = new Map<string, LiveBuild>()
   const inflight = new Set<string>()
   let scanning = false
+  /** 扫描期间又有 refresh() 请求时置位，当前扫描结束后补跑一次（避免清除未读后汇总不刷新）。 */
+  let pendingRefresh = false
   /** 是否还有「进行中」任务：false 时 tick() 直接短路，不发任何请求。 */
   let hasInFlight = false
+  /** 任务数量汇总：每次扫描后按历史快照重算（footer 胶囊数据源）。 */
+  const summary: TaskSummary = { building: 0, successUnread: 0 }
 
   const emit = (): void => {
     for (const fn of Array.from(listeners)) {
       try { fn() } catch { /* 订阅者异常不影响轮询 */ }
     }
+  }
+
+  /** 按历史快照重算汇总：构建中（result 为空且带轮询数据）+ 成功未读（SUCCESS 且 unread）。 */
+  const computeSummary = (entries: HistoryEntry[]): void => {
+    let building = 0
+    let successUnread = 0
+    for (const e of entries) {
+      if (e.result === null || e.result === undefined) {
+        if (e.queueId != null || e.buildNumber != null) building++
+      } else if (e.result === 'SUCCESS' && e.unread === true) {
+        successUnread++
+      }
+    }
+    summary.building = building
+    summary.successUnread = successUnread
   }
 
   const segmentsOf = (e: HistoryEntry): string[] => {
@@ -123,6 +152,8 @@ export function createPoller(run: RunFn, storage: StorageApi, getSession: () => 
     try {
       entries = await storage.readAllHistory(sessionId)
     } catch { /* 忽略读取失败 */ }
+    // 汇总随每次扫描更新（含空闲扫描：历史 tab 清除未读后刷新，footer 已完成胶囊随之消失）。
+    computeSummary(entries)
     let found = false
     for (const e of entries) {
       if (e.result !== null && e.result !== undefined) continue
@@ -132,6 +163,22 @@ export function createPoller(run: RunFn, storage: StorageApi, getSession: () => 
     }
     // 每次扫描后重算进行中标记：全部完成 → 空闲，后续 tick 直接短路。
     hasInFlight = found
+    // 空闲扫描（无进行中任务）也要通知订阅者：汇总 / 计数变化需要被 footer / 弹框感知。
+    emit()
+  }
+
+  // refresh 实现提为具名函数：扫描期间再次 refresh 时置位 pendingRefresh，当前扫描结束后补跑
+  // （如打开历史清除未读后立即刷新汇总），避免请求被丢弃导致 footer 胶囊 / 未读点不更新。
+  const refreshImpl = (): void => {
+    if (scanning) { pendingRefresh = true; return }
+    scanning = true
+    void scan().finally(() => {
+      scanning = false
+      if (pendingRefresh) {
+        pendingRefresh = false
+        refreshImpl()
+      }
+    })
   }
 
   return {
@@ -142,15 +189,12 @@ export function createPoller(run: RunFn, storage: StorageApi, getSession: () => 
       scanning = true
       void scan().finally(() => { scanning = false })
     },
-    refresh() {
-      if (scanning) return
-      scanning = true
-      void scan().finally(() => { scanning = false })
-    },
+    refresh: refreshImpl,
     subscribe(fn) {
       listeners.add(fn)
       return () => { listeners.delete(fn) }
     },
     getLive(entryId) { return live.get(entryId) },
+    getSummary() { return summary },
   }
 }
