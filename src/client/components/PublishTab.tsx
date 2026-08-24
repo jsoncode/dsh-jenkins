@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { fmtDur, LANG, t, tErr } from '../i18n.ts'
+import { fmtDur, t, tErr } from '../i18n.ts'
 import { matchServer, type CachedLaunch, type HistoryEntry, type StorageApi } from '../storage.ts'
 import type { RunFn } from '../rpc.ts'
 import type { Poller } from '../poller.ts'
@@ -168,7 +168,6 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
   useEffect(() => poller.subscribe(loadInFlight), [poller, loadInFlight])
   const [servers, setServers] = useState<Server[]>([])
   const [serverPool, setServerPool] = useState<Server[]>([]) // 下拉候选：配置交集（交集为空或未配置时退化为全部服务器）
-  const [serverMismatch, setServerMismatch] = useState<string[]>([]) // 配置里未匹配到的服务器标识
   const [selectedServerId, setSelectedServerId] = useState('')
   const [addServerOpen, setAddServerOpen] = useState(false) // 「去添加」新增服务器弹框
   const [serverReloadKey, setServerReloadKey] = useState(0) // 新增服务器保存成功后重新加载列表
@@ -187,7 +186,7 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
   const IS_DASH_LABEL = /^[-—–]{3,}$/
 
   // 加载已配置服务器；下拉候选 = 配置引用过的服务器 ∩ 已配置服务器
-  // （无配置或交集为空则退化为全部服务器，配置缺失时提示）。
+  // （无配置或交集为空则退化为全部服务器）。
   // 预选顺序：缓存上次使用的服务器（限交集内）→ 交集第一台（交集为空时全部第一台）。
   useEffect(() => {
     let alive = true
@@ -197,11 +196,8 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
       setServers(list)
       if (onCountChange) onCountChange(list.length)
       const matched = configServerRefs.length ? list.filter((s) => configServerRefs.some((ref) => matchServer(s, ref))) : []
-      const unmatched = configServerRefs.filter((ref) => !list.some((s) => matchServer(s, ref)))
       const pool = matched.length ? matched : list
       setServerPool(pool)
-      // 仅在「有配置引用但交集为空」时提示（此时下拉已退化为全部服务器）
-      setServerMismatch(configServerRefs.length > 0 && matched.length === 0 ? unmatched : [])
       const cachedServer = cached && pool.find((s) => s.id === cached.serverId)
       const preferred = cachedServer || (pool.length ? pool[0] : null)
       setSelectedServerId(preferred ? preferred.id : '')
@@ -532,12 +528,6 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
           </button>
         </div>
       </div>
-      {serverMismatch.length > 0 ? (
-        <div className="dshj-server-field">
-          <label className="dshj-server-label" />
-          <div className="dshj-warn" style={{ fontSize: 12, lineHeight: 1.5 }}>{t('serverMismatch', { list: serverMismatch.join(LANG === 'zh' ? '、' : ', ') })}</div>
-        </div>
-      ) : null}
       <div className="dshj-server-field">
         <label className="dshj-server-label">{t('jobField')}</label>
         <div className="dshj-server-ctrl">
