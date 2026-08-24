@@ -1,10 +1,18 @@
 # dsh-jenkins
 
+<p align="center">
+  <img src="assets/preview/1.png" alt="dsh-jenkins 界面预览" width="800" />
+</p>
+
 DeepSeek Harness 插件（**双面**：宿主 + 浏览器）：管理多台 Jenkins 服务器与 Token，
 支持设置页配置、模型工具触发构建、工作区级「执行 Jenkins Job」入口。无硬编码路径、
 全量 TypeScript、可发布到 npm / GitHub。界面文案中英双语（跟随主界面语言）。
 
 [English](README.md)
+
+## 预览
+
+设置页、工作区入口与执行/历史弹框的截图：见 [preview.md](preview.md)。
 
 ## 功能
 
@@ -39,7 +47,8 @@ DeepSeek Harness 插件（**双面**：宿主 + 浏览器）：管理多台 Jenk
 ├── cordis.patch.yml    # 组合包 patch：按包名引用插件行（无路径）
 ├── package.json        # dsh.bundle + dsh.client(web) manifest + peerDependencies
 ├── README.md           # 英文文档（默认）
-└── README.zh.md        # 本文档
+├── README.zh.md        # 本文档
+└── preview.md          # 截图预览（引用 assets/preview/*.png）
 ```
 
 ## 工作区配置文件（dsh-jenkins.json / .js / .ts）

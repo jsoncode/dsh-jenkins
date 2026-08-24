@@ -1,11 +1,19 @@
 # dsh-jenkins
 
+<p align="center">
+  <img src="assets/preview/1.png" alt="dsh-jenkins preview" width="800" />
+</p>
+
 A DeepSeek Harness plugin (dual-face: host + browser) for managing multiple Jenkins
 servers and triggering jobs — from a Settings page, from model tools, and from a
 per-workspace "Run Jenkins Job" entry. No hardcoded paths, TypeScript throughout,
 publishable to npm / GitHub. UI copy is bilingual (Chinese / English, following the host UI language).
 
 [中文文档](README.zh.md)
+
+## Preview
+
+Screenshots of the Settings page, workspace entry and run/history modals: see [preview.md](preview.md).
 
 ## Features
 
@@ -45,7 +53,8 @@ publishable to npm / GitHub. UI copy is bilingual (Chinese / English, following 
 ├── cordis.patch.yml    # Bundle patch: plugin row referenced by package name (no paths)
 ├── package.json        # dsh.bundle + dsh.client(web) manifests + peerDependencies
 ├── README.md           # This file (English)
-└── README.zh.md        # 中文文档
+├── README.zh.md        # 中文文档
+└── preview.md          # Screenshot preview (references assets/preview/*.png)
 ```
 
 ## Workspace config file (`dsh-jenkins.json` / `.js` / `.ts`)
