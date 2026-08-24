@@ -2,7 +2,7 @@
  * dsh-jenkins —— 操作分发（命令与模型工具共用）：runOp 全部分支。
  *
  * 分支：workspaceConfig / workspaceTrigger / saveTemplate / list / save / delete / test /
- * jobs / jobDetail / trigger / queueStatus / buildStatus / buildLog / cancel。
+ * jobs / jobDetail / jobHistory / trigger / queueStatus / buildStatus / buildLog / cancel。
  */
 
 import type { HostCtxLike } from './jenkins.ts'
@@ -313,6 +313,31 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
       params: extractParams(data.property),
       segments: segs,
     }
+  }
+
+  if (op === 'jobHistory') {
+    // 「历史记录」tab：拉取指定 Job 在服务器上的真实构建历史（Jenkins remote API
+    // job/<path>/api/json?tree=builds[...]），返回最近最多 100 条构建记录。
+    const s = findServer(String(req.serverId || ''))
+    if (!s) return { ok: false, code: 'server-missing', error: 'Server not found' }
+    const segs = Array.isArray(req.segments) && (req.segments as unknown[]).length ? (req.segments as string[]) : jobSegments(String(req.jobUrl || ''))
+    if (segs.length === 0) return { ok: false, code: 'job-path-invalid', error: 'Unable to parse job path' }
+    // 深度 tree 一次取全字段（避免每条构建一次请求）：编号 / 时间 / 结果 / 是否构建中 / 耗时 / 地址 / 描述 / 显示名。
+    const tree = 'builds[number,timestamp,result,building,duration,url,description,displayName]'
+    const data = await jenkinsJson(ctx, s, jobPath(segs) + '/api/json?tree=' + encodeURIComponent(tree)) as {
+      builds?: Array<Record<string, unknown>>
+    }
+    const builds = (data.builds || []).map((b) => ({
+      number: b.number == null ? null : Number(b.number),
+      timestamp: b.timestamp == null ? null : Number(b.timestamp),
+      result: b.result == null ? null : String(b.result),
+      building: !!b.building,
+      duration: b.duration == null ? 0 : Number(b.duration),
+      url: String(b.url || ''),
+      description: String(b.description || ''),
+      displayName: String(b.displayName || ''),
+    }))
+    return { ok: true, builds, job: segs.join('/'), server: s.name }
   }
 
   if (op === 'trigger') {

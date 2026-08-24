@@ -1,12 +1,14 @@
 /**
  * dsh-jenkins —— 统一「Jenkins 配置」弹框（shell.overlay）：
- * 侧边栏底部「Jenkins 配置」入口打开的单一弹框，三个 tab：
+ * 侧边栏底部「Jenkins 配置」入口打开的单一弹框，四个 tab：
  * - 发布：原「执行 Jenkins Job」弹框内容（服务器 / Job / 参数 / 触发 / 轮询状态）；
  * - 配置：原设置页内容（服务器管理：增删改查 / 测试连接 / 项目配置弹框）；
- * - 历史：原「发布历史」弹框内容（按工作区筛选 / 查看构建日志 / 清空）。
+ * - 本机记录：原「发布历史」弹框内容（按工作区筛选 / 查看构建日志 / 清空）；
+ * - 历史记录：指定 Job 在 Jenkins 服务器上的真实构建记录（服务器 / Job 下拉 + 构建日志）。
  *
+ * tab 按钮放在弹框标题右侧（标题栏内），压缩弹框高度。
  * 当前工作区（cwd）与会话 id 由宿主 overlay 的 useWorkspaces / useSessions 推导，
- * 三个 tab 共享同一份上下文。
+ * 四个 tab 共享同一份上下文。
  */
 import type { RunFn } from '../rpc.ts';
 import type { Poller } from '../poller.ts';

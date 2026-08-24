@@ -4,7 +4,7 @@
  * - settings namespace（dsh-jenkins.servers）持久化多服务器配置，base 层来自
  *   cordis.yml 的 config.servers（Schemastery 校验），用户层可经命令写入并持久化；
  * - `/dsh-jenkins/api` HTTP 路由（webServer 注册 + 信任围栏）：浏览器半边（设置页 /
- *   执行弹框 / 后台轮询）经 fetch 调用，参数为 JSON（{ op: 'list|save|delete|test|jobs|jobDetail|trigger|queueStatus|buildStatus|...' }），
+ *   执行弹框 / 后台轮询）经 fetch 调用，参数为 JSON（{ op: 'list|save|delete|test|jobs|jobDetail|jobHistory|trigger|queueStatus|buildStatus|...' }），
  *   结果以 JSON 信封回传。请求不进入对话命令通道，页面不会出现 command 节点 / 调试卡片；
  * - `dsh-jenkins` 命令：保留兼容（用户/模型在对话中显式执行时可用），
  *   浏览器半边默认不再走命令通道；
@@ -260,7 +260,7 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
     (commands as CommandsService).register({
       name: 'dsh-jenkins',
       description: 'Jenkins CLI：管理服务器配置并触发/查询构建（设置界面/工作区入口调用）。Manage Jenkins servers and trigger/query builds (used by the settings UI and workspace entry). 参数为 JSON：'
-        + '{ "op": "list|save|delete|test|jobs|jobDetail|trigger|queueStatus|buildStatus|buildLog|cancel|cacheGet|cacheSet|workspaceConfig|workspaceTrigger|saveTemplate", ... }。',
+        + '{ "op": "list|save|delete|test|jobs|jobDetail|jobHistory|trigger|queueStatus|buildStatus|buildLog|cancel|cacheGet|cacheSet|workspaceConfig|workspaceTrigger|saveTemplate", ... }。',
       input: { hint: '{"op":"list"}' },
       recordInput: true,
       handler: async (invocation: { rawInput?: string }): Promise<{ kind: 'success' | 'error'; text: string }> => {

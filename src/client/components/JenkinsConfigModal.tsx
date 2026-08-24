@@ -1,12 +1,14 @@
 /**
  * dsh-jenkins —— 统一「Jenkins 配置」弹框（shell.overlay）：
- * 侧边栏底部「Jenkins 配置」入口打开的单一弹框，三个 tab：
+ * 侧边栏底部「Jenkins 配置」入口打开的单一弹框，四个 tab：
  * - 发布：原「执行 Jenkins Job」弹框内容（服务器 / Job / 参数 / 触发 / 轮询状态）；
  * - 配置：原设置页内容（服务器管理：增删改查 / 测试连接 / 项目配置弹框）；
- * - 历史：原「发布历史」弹框内容（按工作区筛选 / 查看构建日志 / 清空）。
+ * - 本机记录：原「发布历史」弹框内容（按工作区筛选 / 查看构建日志 / 清空）；
+ * - 历史记录：指定 Job 在 Jenkins 服务器上的真实构建记录（服务器 / Job 下拉 + 构建日志）。
  *
+ * tab 按钮放在弹框标题右侧（标题栏内），压缩弹框高度。
  * 当前工作区（cwd）与会话 id 由宿主 overlay 的 useWorkspaces / useSessions 推导，
- * 三个 tab 共享同一份上下文。
+ * 四个 tab 共享同一份上下文。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -19,9 +21,10 @@ import { ErrorBoundary } from './ErrorBoundary.tsx'
 import { PublishTab } from './PublishTab.tsx'
 import { SettingsPage } from './SettingsPage.tsx'
 import { HistoryTab } from './HistoryTab.tsx'
+import { ServerHistoryTab } from './ServerHistoryTab.tsx'
 import { ModalPortal } from './ModalPortal.tsx'
 
-type ConfigTab = 'publish' | 'config' | 'history'
+type ConfigTab = 'publish' | 'config' | 'history' | 'serverHistory'
 
 type WorkspaceItem = { path?: string; sessionIds?: string[] }
 
@@ -39,6 +42,7 @@ const TABS: Array<{ id: ConfigTab; label: string }> = [
   { id: 'publish', label: t('tabPublish') },
   { id: 'config', label: t('tabConfig') },
   { id: 'history', label: t('tabHistory') },
+  { id: 'serverHistory', label: t('tabServerHistory') },
 ]
 
 export function JenkinsConfigModal({ run, poller, storage, useOpen, close, useWorkspaces, useSessions }: JenkinsConfigModalProps) {
@@ -107,31 +111,32 @@ export function JenkinsConfigModal({ run, poller, storage, useOpen, close, useWo
   if (!open) return null
   return (
     <ModalPortal modalClass="dshj-config-modal" onBackdropClose={close}>
-      <div className="dshj-modal-header">
-        <div>
+      {/* tab 按钮放在标题栏右侧（标题与关闭按钮之间），压缩弹框高度 */}
+      <div className="dshj-modal-header dshj-config-header">
+        <div className="dshj-config-title">
           <div className="dshj-modal-title">{t('settingsNav')}</div>
           <div className="dshj-modal-sub">{cwd || ''}</div>
         </div>
+        <div className="dshj-tabs dshj-config-tabs" role="tablist">
+          {TABS.map((item) => {
+            const count = item.id === 'config' ? configCount : item.id === 'history' ? historyCount : 0
+            return (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                aria-selected={tab === item.id}
+                className={'dshj-tab' + (tab === item.id ? ' dshj-tab-active' : '')}
+                onClick={() => setTab(item.id)}
+              >
+                {item.label}
+                {item.id === 'history' && unreadCount > 0 ? <span className="dshj-tab-dot" title={t('unreadCount', { n: unreadCount })} /> : null}
+                {count > 0 ? <span className="dshj-badge">{count}</span> : null}
+              </button>
+            )
+          })}
+        </div>
         <button type="button" className="dshj-close" aria-label={t('close')} title={t('close')} onClick={close}>✕</button>
-      </div>
-      <div className="dshj-tabs" role="tablist">
-        {TABS.map((item) => {
-          const count = item.id === 'config' ? configCount : item.id === 'history' ? historyCount : 0
-          return (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              aria-selected={tab === item.id}
-              className={'dshj-tab' + (tab === item.id ? ' dshj-tab-active' : '')}
-              onClick={() => setTab(item.id)}
-            >
-              {item.label}
-              {item.id === 'history' && unreadCount > 0 ? <span className="dshj-tab-dot" title={t('unreadCount', { n: unreadCount })} /> : null}
-              {count > 0 ? <span className="dshj-badge">{count}</span> : null}
-            </button>
-          )
-        })}
       </div>
       <div className="dshj-modal-body dshj-config-body">
         {tab === 'publish' ? (
@@ -142,9 +147,13 @@ export function JenkinsConfigModal({ run, poller, storage, useOpen, close, useWo
           <ErrorBoundary label="SettingsPage">
             <SettingsPage run={run} sessionId={sessionId} cwd={cwd} onCountChange={setConfigCount} />
           </ErrorBoundary>
-        ) : (
+        ) : tab === 'history' ? (
           <ErrorBoundary label="HistoryTab">
             <HistoryTab cwd={cwd} sessionId={sessionId} run={run} poller={poller} storage={storage} onCountChange={setHistoryCount} onFooter={reportFooter} logTarget={logTarget} onLogTargetChange={setLogTarget} />
+          </ErrorBoundary>
+        ) : (
+          <ErrorBoundary label="ServerHistoryTab">
+            <ServerHistoryTab run={run} sessionId={sessionId} poller={poller} />
           </ErrorBoundary>
         )}
       </div>
