@@ -4,10 +4,17 @@
   <img src="assets/preview/1.png" alt="dsh-jenkins preview" width="800" />
 </p>
 
-A DeepSeek Harness plugin (dual-face: host + browser) for managing multiple Jenkins
-servers and triggering jobs — from a Settings page, from model tools, and from a
-per-workspace "Run Jenkins Job" entry. No hardcoded paths, TypeScript throughout,
-publishable to npm / GitHub. UI copy is bilingual (Chinese / English, following the host UI language).
+**dsh-jenkins** is a Jenkins management plugin built on the DeepSeek Harness (DSH)
+host, centralizing multiple servers and jobs for fast build publishing.
+
+- **Multi-server / multi-job management** — configure and manage multiple Jenkins
+  servers and jobs in one place
+- **One-click publishing** — trigger parameterized builds, track
+  queue → building → result in real time
+- **Logs & operations** — view build logs, stop or cancel builds at any time
+- **Bilingual UI** — follows the host interface language (中文 / English)
+
+Available from the Settings page, a per-workspace entry, and model tools.
 
 [中文文档](README.zh.md)
 

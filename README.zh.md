@@ -4,9 +4,15 @@
   <img src="assets/preview/1.png" alt="dsh-jenkins 界面预览" width="800" />
 </p>
 
-DeepSeek Harness 插件（**双面**：宿主 + 浏览器）：管理多台 Jenkins 服务器与 Token，
-支持设置页配置、模型工具触发构建、工作区级「执行 Jenkins Job」入口。无硬编码路径、
-全量 TypeScript、可发布到 npm / GitHub。界面文案中英双语（跟随主界面语言）。
+**dsh-jenkins** 是基于 DeepSeek Harness（DSH）宿主的 Jenkins 服务器管理插件，
+集中管理多台服务器与 Job，快速完成构建发布。
+
+- **多服务器 / 多 Job 管理**：集中配置、统一管理多台 Jenkins 服务器及其 Job
+- **一键发布**：参数化构建触发，实时跟踪「排队 → 构建中 → 结果」状态
+- **日志与运维**：随时查看构建日志，支持停止 / 取消构建
+- **中英双语**：界面跟随主界面语言切换
+
+支持设置页、工作区入口与模型工具三种操作方式。
 
 [English](README.md)
 
