@@ -59,6 +59,9 @@ export const css = [
   '.dshj-footer-btn{box-sizing:border-box;cursor:pointer;width:calc(100% + 4px);height:42px;color:var(--dsw-alias-label-primary);background:transparent;border:none;border-radius:12px;flex:none;align-items:center;gap:8px;margin:4px -2px;padding:0 10px 0 8px;font-family:inherit;font-size:14px;line-height:22px;display:flex;overflow:hidden}',
   '.dshj-footer-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}',
   '.dshj-footer-btn-rail{border-radius:50%;justify-content:center;gap:0;width:36px;height:36px;margin:8px 0 10px;padding:0}',
+  // 显示【有更新】胶囊时（宽模式）：给按钮右侧补内边距，文字不再延伸到胶囊下方被覆盖
+  // （胶囊绝对定位于按钮右侧 right:10px，宽约 40px；60px 足够让出并留出呼吸间距）
+  '.dshj-footer-btn-has-update{padding-right:60px}',
   '.dshj-footer-group{width:100%;min-width:0;position:relative}',
   '.dshj-footer-rail-group{width:auto;display:flex;flex-direction:column;align-items:center}',
   // 图标：28px 圆形 Jenkins 红底徽标（object-fit:contain 保持 SVG 比例居中，透明区透出红底）；
@@ -74,6 +77,13 @@ export const css = [
   '.dshj-capsule-building{color:#4a3500;background:#f0b429;border:1px solid color-mix(in srgb,#f0b429 60%,#fff)}',
   // 构建成功（未读）：绿色实心胶囊，打开「历史」tab 后随未读清除而消失
   '.dshj-capsule-done{color:#fff;background:var(--dsw-alias-state-success-primary,#2a7d3c);border:1px solid color-mix(in srgb,var(--dsw-alias-state-success-primary,#2a7d3c) 75%,#fff)}',
+  // 有更新：蓝色实心文字胶囊，位于状态胶囊组最右侧（registry 出现比本地更新的 dsh-jenkins 时显示）
+  '.dshj-capsule-update{color:#fff;background:var(--dsw-alias-state-info-primary,#2563eb);border:1px solid color-mix(in srgb,var(--dsw-alias-state-info-primary,#2563eb) 75%,#fff);font-weight:600}',
+  // 更新胶囊点击热区：与胶囊等宽（视觉不变）、纵向撑满 footer 按钮高度，放大点击区域；
+  // 外层胶囊容器 pointer-events:none（点击穿透给下方配置按钮），热区自身恢复 auto ——
+  // 点击热区任意位置触发更新确认，不再穿透到配置按钮
+  '.dshj-capsule-wrap{display:inline-flex;align-items:center;justify-content:center;width:auto;height:42px;padding:0;margin:0;border:none;background:transparent;color:inherit;font:inherit;cursor:pointer;pointer-events:auto;flex:none;box-sizing:border-box;border-radius:999px}',
+  '.dshj-footer-rail-group .dshj-capsule-wrap{height:24px}',
   // 宿主 sidebar.footer.action 列表容器：slots 渲染器为每个插槽输出稳定的
   // [data-slot] 锚点（display:contents，不参与布局），其父容器即宿主的
   // footer 行容器。宿主默认 flex 行布局会把多个插件注册的按钮挤在一行，
@@ -213,6 +223,27 @@ export const css = [
   '.dshj-history-params-copy.dshj-btn-icon{width:20px;height:20px;border-radius:5px}',
   // 构建日志弹框（宽度比 880px 的「Jenkins 配置」弹框小，居中时露出配置弹框边缘，避免完全重叠）
   '.dshj-log-modal{width:min(720px,100%);height:min(78vh,640px);min-height:420px}',
+  // 插件更新弹框（对齐 dsh-get-balance「更新插件」弹框）：
+  // 确认弹框 = 小尺寸（420px，自适应高度）；日志弹框 = 大尺寸（720px，最小 380px）
+  '.dshj-modal-sm{width:min(420px,100%);min-height:0;max-height:60vh}',
+  '.dshj-modal-log{width:min(720px,100%);min-height:380px}',
+  '.dshj-modal-log .dshj-modal-body{display:flex;flex-direction:column}',
+  // 更新日志：深色终端面板（等宽字体、可滚动、自动换行），与终端观感一致
+  '.dshj-update-log{flex:1;min-height:0;overflow:auto;background:#0f1419;color:#d5d8dc;border:1px solid var(--dsw-alias-border-l2,#333);border-radius:8px;padding:10px 12px;margin:0 0 10px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word}',
+  // 更新状态行：运行中带转圈（默认灰），成功绿 / 失败红
+  '.dshj-update-status{display:flex;align-items:center;gap:8px;font-size:12px;margin:0 0 10px;color:var(--dsw-alias-label-secondary,#888)}',
+  '.dshj-update-status-ok{color:#16a34a}',
+  '.dshj-update-status-err{color:var(--dsw-alias-state-error-primary,#d33)}',
+  '.dshj-spinner-inline{width:12px;height:12px;border-radius:50%;border:2px solid var(--dsw-alias-border-l2,#ccc);border-top-color:var(--dsw-alias-brand-primary,#1668e3);animation:dshj-spin .8s linear infinite;flex:none}',
+  // 更新运行中提示（关闭弹框仍后台继续）
+  '.dshj-hint{font-size:12px;color:var(--dsw-alias-label-secondary,#888);margin:0 0 10px;line-height:1.5}',
+  // 更新确认弹框中的待执行命令（等宽字体、深色底，与代码块一致；body 已有水平内边距，
+  // 顶部 14px 与描述文案拉开间距）。双类选择器提升特异性：`.dshj-code` 定义在本文件
+  // 更靠后，同优先级下会覆盖 margin，必须用更高特异性让间距生效。
+  '.dshj-update-cmd.dshj-code{margin:14px 0 0;padding:8px 12px;max-height:none;white-space:pre-wrap;word-break:break-all}',
+  '.dshj-update-cmd-sub{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;word-break:break-all}',
+  // 更新完成提示（footer 左区，margin-right:auto 把按钮推到右侧）：重启 dsh 服务生效
+  '.dshj-update-hint{margin-right:auto;font-size:12px;color:var(--dsw-alias-label-secondary,#888);display:inline-flex;align-items:center;gap:6px;flex:none}',
   // 网页全屏：fixed 铺满视口（相对 viewport 定位，不受遮罩 padding 影响），非系统全屏
   '.dshj-log-fullscreen{position:fixed;inset:0;width:auto;height:auto;max-width:none;max-height:none;min-height:0;border-radius:0;border:none;box-shadow:none}',
   '.dshj-log-fullscreen .dshj-modal-body{padding:14px 18px}',

@@ -2,7 +2,8 @@
  * dsh-jenkins —— 操作分发（命令与模型工具共用）：runOp 全部分支。
  *
  * 分支：workspaceConfig / workspaceTrigger / saveTemplate / list / save / delete / test /
- * jobs / jobDetail / jobHistory / trigger / queueStatus / buildStatus / buildLog / cancel。
+ * jobs / jobDetail / jobHistory / trigger / queueStatus / buildStatus / buildLog / cancel /
+ * updateCheck / pluginUpdateStart / pluginUpdateStatus。
  */
 
 import type { HostCtxLike } from './jenkins.ts'
@@ -17,6 +18,8 @@ import {
   normalizeBase,
 } from './jenkins.ts'
 import { loadWorkspaceConfig } from './workspace-config.ts'
+import { checkPluginUpdate, resetInstalledVersionCache } from './update.ts'
+import { getPluginUpdateStatus, startPluginUpdate } from './plugin-update.ts'
 import type { FsService, HttpResponse, OpRequest, OpResult, PublicServer, ServerConfig, ShellService } from './types.ts'
 
 export interface OpsDeps {
@@ -461,6 +464,30 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
       return { ok: true, target: 'queue' }
     }
     return { ok: false, code: 'build-not-found', error: 'Missing build number or queue id' }
+  }
+
+  if (op === 'updateCheck') {
+    // 插件新版本检查：npm registry（keywords:dsh-jenkins）最新版 vs 被安装根目录
+    // package.json 版本；宿主进程内缓存 10 分钟，网络失败静默降级。
+    const update = await checkPluginUpdate()
+    return { ok: true, update }
+  }
+
+  if (op === 'pluginUpdateStart') {
+    // 后台执行 `dsh plugin --profile web update dsh-jenkins`，
+    // stdout/stderr 进入宿主环形缓冲，客户端轮询 status 拉取日志。
+    const start = startPluginUpdate()
+    return start.ok
+      ? { ok: true, alreadyRunning: start.alreadyRunning === true }
+      : { ok: false, code: 'spawn-failed', error: start.error ?? 'failed to spawn dsh' }
+  }
+
+  if (op === 'pluginUpdateStatus') {
+    const status = getPluginUpdateStatus()
+    // 更新进程结束后使版本缓存失效：下一次 updateCheck 重读新版本号，
+    // 客户端据此隐藏「更新」胶囊。
+    if (status.done) resetInstalledVersionCache()
+    return { ok: true, status }
   }
 
   if (op === 'cacheGet') {
