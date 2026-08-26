@@ -45,7 +45,11 @@ export interface Poller {
   refresh(): void
   subscribe(fn: () => void): () => void
   getLive(entryId: string): LiveBuild | undefined
-  /** 当前任务数量汇总（由最近一次扫描计算；footer 胶囊直接读取）。 */
+  /**
+   * 当前任务数量汇总（由最近一次扫描计算；footer 胶囊直接读取）。
+   * 返回不可变快照：数值不变时引用稳定，数值变化才返回新对象 ——
+   * 可安全放进 useState / 依赖引用比较的场景（React Object.is bailout 兼容）。
+   */
   getSummary(): TaskSummary
 }
 
@@ -60,8 +64,8 @@ export function createPoller(run: RunFn, storage: StorageApi, getSession: () => 
   let pendingRefresh = false
   /** 是否还有「进行中」任务：false 时 tick() 直接短路，不发任何请求。 */
   let hasInFlight = false
-  /** 任务数量汇总：每次扫描后按历史快照重算（footer 胶囊数据源）。 */
-  const summary: TaskSummary = { building: 0, successUnread: 0 }
+  /** 任务数量汇总快照：每次扫描后按历史快照重算（footer 胶囊数据源）。 */
+  let summarySnapshot: TaskSummary = { building: 0, successUnread: 0 }
 
   const emit = (): void => {
     for (const fn of Array.from(listeners)) {
@@ -80,8 +84,12 @@ export function createPoller(run: RunFn, storage: StorageApi, getSession: () => 
         successUnread++
       }
     }
-    summary.building = building
-    summary.successUnread = successUnread
+    // 快照语义：数值不变保持原引用，变化才换新对象。订阅方（footer 胶囊）把
+    // getSummary() 结果直接放进 useState，React 以 Object.is 判定引用相同就跳过
+    // 重渲染 —— 原地修改共享对象会导致发布后胶囊数字永不刷新。
+    if (building !== summarySnapshot.building || successUnread !== summarySnapshot.successUnread) {
+      summarySnapshot = { building, successUnread }
+    }
   }
 
   const segmentsOf = (e: HistoryEntry): string[] => {
@@ -195,6 +203,6 @@ export function createPoller(run: RunFn, storage: StorageApi, getSession: () => 
       return () => { listeners.delete(fn) }
     },
     getLive(entryId) { return live.get(entryId) },
-    getSummary() { return summary },
+    getSummary() { return summarySnapshot },
   }
 }

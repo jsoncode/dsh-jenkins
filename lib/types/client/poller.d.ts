@@ -40,7 +40,11 @@ export interface Poller {
     refresh(): void;
     subscribe(fn: () => void): () => void;
     getLive(entryId: string): LiveBuild | undefined;
-    /** 当前任务数量汇总（由最近一次扫描计算；footer 胶囊直接读取）。 */
+    /**
+     * 当前任务数量汇总（由最近一次扫描计算；footer 胶囊直接读取）。
+     * 返回不可变快照：数值不变时引用稳定，数值变化才返回新对象 ——
+     * 可安全放进 useState / 依赖引用比较的场景（React Object.is bailout 兼容）。
+     */
     getSummary(): TaskSummary;
 }
 export declare function createPoller(run: RunFn, storage: StorageApi, getSession: () => string): Poller;
