@@ -25,6 +25,7 @@
     "build": "node -e \"require('fs').rmSync('lib',{recursive:true,force:true})\" && tsc -b && tsdown",
     "watch": "tsdown --watch",
     "verify": "node scripts/verify-client.mjs",
+    "test:store": "tsx scripts/test-store.mts && tsx scripts/dryrun-migrate.mts",
     "release": "npm run check && npm run build && npm run verify && npm version patch -m \"release: v%s\" && git push --follow-tags",
     "publish:npm": "npm run check && npm run build && npm run verify && npm publish --access public"
   },

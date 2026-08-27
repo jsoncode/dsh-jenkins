@@ -113,34 +113,53 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
   const mirror: JenkinsStore = EMPTY_STORE()
   let storeReady: Promise<void> = Promise.resolve()
 
+  // 旧版 settings 命名空间：必须在 apply 同步段注册（register 用 ctx.effect
+  // 延迟登记，异步段注册后立刻 scope.update() 会因 effect 未 flush 而抛
+  // "namespace is not registered"）。注册本身不写文档，仅迁移需要。
+  let legacyScope: SettingsScope | null = null
+  if (settings !== undefined) {
+    try {
+      legacyScope = settings.register(settingsNamespace('dsh-jenkins'), LegacySettingsSchema, {
+        base: { serversJson: JSON.stringify(config.servers || []), cacheJson: '{}' },
+      }) as SettingsScope
+    } catch { /* 重复注册/校验失败：跳过迁移 */ }
+  }
+
   /** 解析旧 settings 命名空间中的 JSON 字符串（容错返回空值）。 */
   const parseLegacyJson = (raw: unknown, fallback: string): unknown => {
     if (typeof raw !== 'string' || raw.trim().length === 0) return JSON.parse(fallback)
     try { return JSON.parse(raw) } catch { return JSON.parse(fallback) }
   }
 
-  /** 一次性迁移：数据文件不存在（或为空）且旧 settings 有数据时提取并清空。 */
-  const migrateLegacy = async (scope: SettingsScope | null): Promise<void> => {
-    if (scope === null) return
-    let legacyServers: ServerConfig[] = []
-    let legacyCache: Record<string, unknown> = {}
+  /** 读取旧 settings 命名空间数据（servers + cache），空则返回空值。 */
+  const readLegacy = (scope: SettingsScope | null): { servers: ServerConfig[]; cache: Record<string, unknown> } => {
+    if (scope === null) return { servers: [], cache: {} }
+    let servers: ServerConfig[] = []
+    let cache: Record<string, unknown> = {}
     const value = scope.get()
     try {
       const parsed = parseLegacyJson(value && value.serversJson, '[]')
-      legacyServers = Array.isArray(parsed) ? parsed as ServerConfig[] : []
+      servers = Array.isArray(parsed) ? parsed as ServerConfig[] : []
     } catch { /* keep empty */ }
     try {
       const parsed = parseLegacyJson(value && value.cacheJson, '{}')
-      legacyCache = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {}
+      cache = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {}
     } catch { /* keep empty */ }
-    const hasLegacy = legacyServers.length > 0 || Object.keys(legacyCache).length > 0
-    if (!hasLegacy) return
-    mirror.servers = legacyServers
-    mirror.cache = legacyCache
-    await saveStore(storeDir, mirror)
-    // 迁移成功后清空旧命名空间：settings.yaml 不再残留插件数据。
+    return { servers, cache }
+  }
+
+  /**
+   * 清空旧 settings 命名空间（幂等）：迁移完成后调用；也处理「数据文件已存在
+   * 但旧命名空间仍有残留」的场景（如上次进程在迁移中途退出）。旧数据已空时
+   * 不写（避免每次启动都触发一次 settings 持久化）。
+   */
+  const clearLegacy = async (scope: SettingsScope | null): Promise<void> => {
+    if (scope === null) return
+    const { servers, cache } = readLegacy(scope)
+    const hasResidual = servers.length > 0 || Object.keys(cache).length > 0
+    if (!hasResidual) return
     await scope.update({ serversJson: '[]', cacheJson: '{}' })
-    console.log(`[dsh-jenkins] migrated legacy settings → ${storeDir}/dsh-jenkins.json`)
+    console.log('[dsh-jenkins] cleared legacy settings namespace')
   }
 
   storeReady = (async () => {
@@ -149,19 +168,21 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
       if (loaded !== null) {
         mirror.servers = loaded.servers
         mirror.cache = loaded.cache
-        return
+      } else {
+        // 数据文件不存在：尝试从旧 settings 一次性迁移；旧数据为空时保持空
+        // store（首次保存时创建文件）。
+        const legacy = readLegacy(legacyScope)
+        const hasLegacy = legacy.servers.length > 0 || Object.keys(legacy.cache).length > 0
+        if (hasLegacy) {
+          mirror.servers = legacy.servers
+          mirror.cache = legacy.cache
+          await saveStore(storeDir, mirror)
+          console.log(`[dsh-jenkins] migrated legacy settings → ${storeDir}/dsh-jenkins.json`)
+        }
       }
-      // 数据文件不存在：尝试从旧 settings 一次性迁移；settings 缺失（headless）
-      // 或旧数据为空时保持空 store（首次保存时创建文件）。
-      if (settings !== undefined) {
-        let scope: SettingsScope | null = null
-        try {
-          scope = settings.register(settingsNamespace('dsh-jenkins'), LegacySettingsSchema, {
-            base: { serversJson: JSON.stringify(config.servers || []), cacheJson: '{}' },
-          }) as SettingsScope
-        } catch { /* 重复注册/校验失败：跳过迁移 */ }
-        await migrateLegacy(scope)
-      }
+      // 无论文件是否存在：清空旧命名空间残留（迁移成功 / 上次迁移中途退出 /
+      // 文件已存在但旧数据未清，三种情况统一处理；幂等）。
+      await clearLegacy(legacyScope)
     } catch (e) {
       console.warn('[dsh-jenkins] store init failed, using in-memory only', e instanceof Error ? e.message : String(e))
     }
