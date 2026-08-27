@@ -41,9 +41,10 @@ Screenshots of the Settings page, workspace entry and run/history modals: see [p
   workspace and auto-echoed the next time the modal opens (browser `localStorage`).
   A missing or invalid config file is treated as "not configured" — no entry is shown.
 - **Model tools** (docs/develop/basic/tool): `dsh_jenkins_build`, `dsh_jenkins_status`.
-- **Config** (docs/develop/basic/config): Schemastery `Config` + a settings namespace
-  that persists UI edits to `$DSH_HOME/settings.yaml` (server list stored as JSON text
-  to avoid frozen-array pitfalls).
+- **Config** (docs/develop/basic/config): Schemastery `Config` + a plugin data file
+  `$DSH_HOME/dsh-jenkins.json` (server tokens encrypted with the machine-bound key
+  `$DSH_HOME/dsh-jenkins.key`, cache in plaintext; on first run any legacy
+  `dsh-jenkins` namespace in `settings.yaml` is migrated once and cleared).
 - **Packaging** (docs/develop/basic/publish): `dsh.bundle` + `dsh.client`(web) manifests.
 
 ## Structure

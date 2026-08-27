@@ -1,8 +1,11 @@
 /**
  * dsh-jenkins —— Jenkins CLI 插件 · 宿主半边（可发布组合包，无硬编码路径）
  *
- * - settings namespace（dsh-jenkins.servers）持久化多服务器配置，base 层来自
- *   cordis.yml 的 config.servers（Schemastery 校验），用户层可经命令写入并持久化；
+ * - 插件数据（服务器列表 + 浏览器缓存）持久化到 $DSH_HOME/dsh-jenkins.json
+ *   （服务器 Token 以 dsh-jenkins.key 机器绑定密钥 AES-256-GCM 加密；缓存明文）。
+ *   settings 命名空间仅用于一次性迁移旧版数据：首次运行时若发现 settings.yaml
+ *   中的 dsh-jenkins 命名空间有数据，自动提取到数据文件并清空旧命名空间，
+ *   之后不再读写宿主默认设置；
  * - `/dsh-jenkins/api` HTTP 路由（webServer 注册 + 信任围栏）：浏览器半边（设置页 /
  *   执行弹框 / 后台轮询）经 fetch 调用，参数为 JSON（{ op: 'list|save|delete|test|jobs|jobDetail|jobHistory|trigger|queueStatus|buildStatus|...' }），
  *   结果以 JSON 信封回传。请求不进入对话命令通道，页面不会出现 command 节点 / 调试卡片；
@@ -24,6 +27,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import { isTrustedApiRequest } from './fence.ts'
 import { runOp } from './ops.ts'
 import type { OpRequest, OpResult, ServerConfig } from './types.ts'
+import { EMPTY_STORE, loadStore, resolveStoreDir, saveStore } from './store.ts'
+import type { JenkinsStore } from './store.ts'
 
 export const name = 'dsh-jenkins'
 export const inject = ['shell', 'tools', 'settings', 'commands']
@@ -43,8 +48,8 @@ export const Config: import('@deepseek-ai/schemastery').default<{ servers: Serve
   servers: Schema.array(ServerSchema).default([]),
 })
 
-/** 运行时 settings namespace：服务器列表与浏览器缓存均以 JSON 字符串持久化到 $DSH_HOME/settings.yaml。 */
-const JenkinsSettingsSchema = Schema.object({
+/** 旧版 settings 命名空间（仅一次性迁移读取，迁移完成后不再读写）。 */
+const LegacySettingsSchema = Schema.object({
   serversJson: Schema.string().default('[]'),
   cacheJson: Schema.string().default('{}'),
 })
@@ -57,6 +62,8 @@ interface CommandsService {
 /** 宿主 settings 服务最小视图。 */
 interface SettingsService {
   register(namespace: unknown, schema: unknown, options?: Record<string, unknown>): unknown
+  /** 本地文件 provider 的用户可编辑文档绝对路径（用于推导 $DSH_HOME）。 */
+  documentPath?: string
 }
 
 /** settings namespace 注册返回的 owner scope 最小视图。 */
@@ -99,47 +106,78 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
   const settings = ctx.get<SettingsService>('settings')
   const commands = ctx.get<CommandsService>('commands')
 
-  // settings namespace：服务器列表以 JSON 字符串存储（规避 settings 对数组
-  // 的深冻结 + schemastery 校验原地改写导致的 "object is not extensible"）。
-  let scope: SettingsScope | null = null
-  if (settings !== undefined) {
-    scope = settings.register(settingsNamespace('dsh-jenkins'), JenkinsSettingsSchema, {
-      base: { serversJson: JSON.stringify(config.servers || []), cacheJson: '{}' },
-    }) as SettingsScope
+  // ── 插件数据存储：$DSH_HOME/dsh-jenkins.json（服务器 Token 加密）──────
+  // 数据文件为唯一持久化源。settings 命名空间仅用于一次性迁移旧版数据：
+  // 数据文件不存在且旧命名空间有数据时，提取写入数据文件并清空旧命名空间。
+  const storeDir = resolveStoreDir(settings?.documentPath)
+  const mirror: JenkinsStore = EMPTY_STORE()
+  let storeReady: Promise<void> = Promise.resolve()
+
+  /** 解析旧 settings 命名空间中的 JSON 字符串（容错返回空值）。 */
+  const parseLegacyJson = (raw: unknown, fallback: string): unknown => {
+    if (typeof raw !== 'string' || raw.trim().length === 0) return JSON.parse(fallback)
+    try { return JSON.parse(raw) } catch { return JSON.parse(fallback) }
   }
-  const readServers = (): ServerConfig[] => {
-    let raw = '[]'
-    if (scope !== null) {
-      const value = scope.get()
-      if (value && typeof value.serversJson === 'string') raw = value.serversJson
-    } else {
-      raw = JSON.stringify(config.servers || [])
-    }
-    try {
-      const parsed = JSON.parse(raw)
-      return Array.isArray(parsed) ? parsed as ServerConfig[] : []
-    } catch {
-      return []
-    }
-  }
-  const writeServers = async (servers: ServerConfig[]): Promise<void> => {
-    if (scope !== null) await scope.update({ serversJson: JSON.stringify(servers) })
-  }
-  // 浏览器缓存（发布参数回显 + 发布历史）也走官方 settings 存储：跟随 $DSH_HOME，
-  // 无论从哪里打开 dsh 服务都可访问；不再使用浏览器 localStorage。
-  const readCacheJson = (): Record<string, unknown> => {
-    if (scope === null) return {}
+
+  /** 一次性迁移：数据文件不存在（或为空）且旧 settings 有数据时提取并清空。 */
+  const migrateLegacy = async (scope: SettingsScope | null): Promise<void> => {
+    if (scope === null) return
+    let legacyServers: ServerConfig[] = []
+    let legacyCache: Record<string, unknown> = {}
     const value = scope.get()
-    if (!value || typeof value.cacheJson !== 'string') return {}
     try {
-      const parsed = JSON.parse(value.cacheJson)
-      return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {}
-    } catch {
-      return {}
-    }
+      const parsed = parseLegacyJson(value && value.serversJson, '[]')
+      legacyServers = Array.isArray(parsed) ? parsed as ServerConfig[] : []
+    } catch { /* keep empty */ }
+    try {
+      const parsed = parseLegacyJson(value && value.cacheJson, '{}')
+      legacyCache = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {}
+    } catch { /* keep empty */ }
+    const hasLegacy = legacyServers.length > 0 || Object.keys(legacyCache).length > 0
+    if (!hasLegacy) return
+    mirror.servers = legacyServers
+    mirror.cache = legacyCache
+    await saveStore(storeDir, mirror)
+    // 迁移成功后清空旧命名空间：settings.yaml 不再残留插件数据。
+    await scope.update({ serversJson: '[]', cacheJson: '{}' })
+    console.log(`[dsh-jenkins] migrated legacy settings → ${storeDir}/dsh-jenkins.json`)
   }
+
+  storeReady = (async () => {
+    try {
+      const loaded = await loadStore(storeDir)
+      if (loaded !== null) {
+        mirror.servers = loaded.servers
+        mirror.cache = loaded.cache
+        return
+      }
+      // 数据文件不存在：尝试从旧 settings 一次性迁移；settings 缺失（headless）
+      // 或旧数据为空时保持空 store（首次保存时创建文件）。
+      if (settings !== undefined) {
+        let scope: SettingsScope | null = null
+        try {
+          scope = settings.register(settingsNamespace('dsh-jenkins'), LegacySettingsSchema, {
+            base: { serversJson: JSON.stringify(config.servers || []), cacheJson: '{}' },
+          }) as SettingsScope
+        } catch { /* 重复注册/校验失败：跳过迁移 */ }
+        await migrateLegacy(scope)
+      }
+    } catch (e) {
+      console.warn('[dsh-jenkins] store init failed, using in-memory only', e instanceof Error ? e.message : String(e))
+    }
+  })()
+  storeReady.catch(() => { /* 初始化失败不抛出（内部已告警） */ })
+
+  // 内存镜像读写：ops 层接口不变（readServers 同步、写异步落盘）。
+  const readServers = (): ServerConfig[] => mirror.servers
+  const writeServers = async (servers: ServerConfig[]): Promise<void> => {
+    mirror.servers = servers
+    await saveStore(storeDir, mirror)
+  }
+  const readCacheJson = (): Record<string, unknown> => mirror.cache
   const writeCacheJson = async (cache: Record<string, unknown>): Promise<void> => {
-    if (scope !== null) await scope.update({ cacheJson: JSON.stringify(cache) })
+    mirror.cache = cache
+    await saveStore(storeDir, mirror)
   }
 
   // 按名称 / id / baseUrl（去尾部斜杠）匹配，兼容配置里直接写服务器地址的形式。
@@ -150,7 +188,7 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
     return all.find((s) => s.name === nameOrIdOrUrl || s.id === nameOrIdOrUrl || normUrl(s.baseUrl) === ref)
   }
 
-  const deps = { ctx, readServers, writeServers, findServer, readCacheJson, writeCacheJson }
+  const deps = { ctx, readServers, writeServers, findServer, readCacheJson, writeCacheJson, storeReady }
 
   // ─── 浏览器 HTTP API（/dsh-jenkins/api）────────────────────────
   // 浏览器半边（设置页 / 执行弹框 / 后台轮询 / 历史存储）默认经此路由与宿主通信：
@@ -296,6 +334,7 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
       render: (_args: unknown, value: unknown) => [{ type: 'text', text: String(value) }],
     },
     async execute(args: { server: string; job: string; parameters?: Record<string, string | number | boolean> }) {
+      await storeReady
       const server = findServer(args.server)
       if (!server) {
         const names = readServers().map((s) => s.name).join('、')
@@ -325,6 +364,7 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
       render: (_args: unknown, value: unknown) => [{ type: 'text', text: String(value) }],
     },
     async execute(args: { server: string; job: string; buildNumber?: number }) {
+      await storeReady
       const server = findServer(args.server)
       if (!server) {
         const names = readServers().map((s) => s.name).join('、')

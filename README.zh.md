@@ -34,9 +34,10 @@
   同一工作区上次发布时提交的 **服务器 / Job / 参数**会被记住，下次打开弹框自动回显
   （浏览器 `localStorage`）。配置文件缺失或解析/校验失败时视为未配置，不显示入口。
 - **模型工具**（docs/develop/basic/tool）：`dsh_jenkins_build`、`dsh_jenkins_status`。
-- **配置**（docs/develop/basic/config）：Schemastery `Config` + settings namespace
-  将界面编辑持久化到 `$DSH_HOME/settings.yaml`（服务器列表以 JSON 字符串存储，
-  规避 settings 冻结数组陷阱）。
+- **配置**（docs/develop/basic/config）：Schemastery `Config` + 插件数据文件
+  `$DSH_HOME/dsh-jenkins.json`（服务器 Token 以 `$DSH_HOME/dsh-jenkins.key`
+  机器绑定密钥加密，缓存明文；首次运行时自动从旧版 `settings.yaml` 的
+  `dsh-jenkins` 命名空间一次性迁移并清空旧数据）。
 - **打包**（docs/develop/basic/publish）：`dsh.bundle` + `dsh.client`(web) manifest。
 
 ## 文件结构

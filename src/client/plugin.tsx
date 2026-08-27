@@ -67,7 +67,7 @@ export function createPlugin(): ClientPluginModule {
       if (slots === undefined) return
       injectStyles()
 
-      // 宿主存储（$DSH_HOME/settings.yaml）：发布参数回显 + 发布历史，不落浏览器 localStorage。
+      // 宿主数据文件（$DSH_HOME/dsh-jenkins.json）：发布参数回显 + 发布历史，不落浏览器 localStorage。
       const storage = createStorage(run)
       // 当前会话 id 追踪：footer 入口挂载时上报，供全局轮询/历史读取复用宿主命令。
       const sessionRef: { current: string } = { current: '' }
