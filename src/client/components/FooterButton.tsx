@@ -52,7 +52,7 @@ export function FooterButton({ onOpen, reportSession, wide = false, useSessions,
   useEffect(() => {
     if (poller && currentSessionId) poller.refresh()
   }, [poller, currentSessionId])
-  // 新版本检查结果：订阅更新 store（宿主 updateCheck op，缓存 10 分钟）
+  // 新版本检查结果：订阅更新 store（宿主 updateCheck op，实时查询）
   const update = useUpdate ? useUpdate() : null
   const showBuilding = summary.building > 0
   const showDone = summary.successUnread > 0
