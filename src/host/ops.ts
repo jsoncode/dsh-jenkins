@@ -18,7 +18,7 @@ import {
   normalizeBase,
 } from './jenkins.ts'
 import { loadWorkspaceConfig } from './workspace-config.ts'
-import { checkPluginUpdate, resetInstalledVersionCache } from './update.ts'
+import { checkPluginUpdate } from './update.ts'
 import { getPluginUpdateStatus, startPluginUpdate } from './plugin-update.ts'
 import type { FsService, HttpResponse, OpRequest, OpResult, PublicServer, ServerConfig, ShellService } from './types.ts'
 
@@ -482,7 +482,7 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
 
   if (op === 'updateCheck') {
     // 插件新版本检查：npm registry（keywords:dsh-jenkins）最新版 vs 被安装根目录
-    // package.json 版本；宿主进程内缓存 10 分钟，网络失败静默降级。
+    // package.json 版本；完全实时（无缓存），网络失败静默降级。
     const update = await checkPluginUpdate()
     return { ok: true, update }
   }
@@ -497,10 +497,9 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
   }
 
   if (op === 'pluginUpdateStatus') {
+    // 客户端轮询拉取更新进程的累计输出与运行状态。
+    // 版本号本身由 update.ts 实时读取（无缓存），更新结束后无需失效动作。
     const status = getPluginUpdateStatus()
-    // 更新进程结束后使版本缓存失效：下一次 updateCheck 重读新版本号，
-    // 客户端据此隐藏「更新」胶囊。
-    if (status.done) resetInstalledVersionCache()
     return { ok: true, status }
   }
 
