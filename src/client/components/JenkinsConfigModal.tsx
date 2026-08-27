@@ -145,7 +145,7 @@ export function JenkinsConfigModal({ run, poller, storage, useOpen, close, useWo
           </ErrorBoundary>
         ) : tab === 'config' ? (
           <ErrorBoundary label="SettingsPage">
-            <SettingsPage run={run} sessionId={sessionId} cwd={cwd} onCountChange={setConfigCount} />
+            <SettingsPage run={run} sessionId={sessionId} cwd={cwd} workspaceItems={workspaceItems} onCountChange={setConfigCount} />
           </ErrorBoundary>
         ) : tab === 'history' ? (
           <ErrorBoundary label="HistoryTab">

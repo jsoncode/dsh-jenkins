@@ -198,7 +198,6 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
     const username = String(a.username || '').trim()
     const token = String(a.token || '').trim()
     if (!/^https?:\/\//i.test(baseUrl)) return { ok: false, code: 'url-invalid', error: 'Server URL must start with http:// or https://' }
-    if (!token) return { ok: false, code: 'token-required', error: 'Token is required' }
     if (!username) return { ok: false, code: 'username-required', error: 'Username is required' }
     // 名称选填（缺省用服务器地址），用户名必填。
     const name = String(a.name || '').trim() || baseUrl
@@ -207,14 +206,25 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
     if (a.id) {
       const s = servers.find((x) => x.id === a.id)
       if (!s) return { ok: false, code: 'server-missing', error: 'Server not found' }
+      // 编辑已保存过 Token 的服务器时允许 Token 留空：沿用上次保存的旧值，
+      // 不重复校验（与前端「留空则不修改」提示一致）；仅存量记录本身没有
+      // Token（数据异常）时才要求填写。新增服务器仍必须提供 Token。
+      const effectiveToken = token || s.token
+      if (!effectiveToken) return { ok: false, code: 'token-required', error: 'Token is required' }
+      // 连接相关字段（地址/用户名/TLS/Token 本身）是否变化：变化才清除已验证
+      // 状态、要求重新测试连接；仅改名或 Token 留空保存不影响「连接成功」标记。
+      const connChanged = s.baseUrl !== baseUrl
+        || s.username !== username
+        || !!s.insecure !== !!a.insecure
+        || (!!token && token !== s.token)
       s.name = name
       s.baseUrl = baseUrl
       s.username = username
+      s.token = effectiveToken
       s.insecure = !!a.insecure
-      // 配置已变化：清除已验证状态，需重新测试连接
-      s.verified = false
-      if (token) s.token = token
+      if (connChanged) s.verified = false
     } else {
+      if (!token) return { ok: false, code: 'token-required', error: 'Token is required' }
       servers.push({
         id: 'srv-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
         name, baseUrl, username, token, insecure: !!a.insecure,

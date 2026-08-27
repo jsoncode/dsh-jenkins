@@ -9,7 +9,7 @@ export interface ServerConfig {
   username: string
   token: string
   insecure?: boolean
-  /** 最近一次测试连接是否通过（持久化；编辑保存后清除，需重新测试）。 */
+  /** 最近一次测试连接是否通过（持久化；连接相关字段变化后清除，需重新测试）。 */
   verified?: boolean
 }
 

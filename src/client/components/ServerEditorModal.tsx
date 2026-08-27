@@ -97,6 +97,9 @@ export function ServerEditorModal({ run, sessionId, server, onSaved, onClose }: 
       .finally(() => setBusy(false))
   }
 
+  // Token 是否必填：新增必填；编辑已保存过 Token 的服务器时留空沿用旧值，
+  // 不再强制校验（仅存量记录没有保存过 Token 时仍必填）。
+  const tokenRequired = draft.isNew || !draft.masked
   // 已填写有效地址时，提供跳转 Jenkins 个人安全页创建 Token 的入口（用户名缺省用 admin）
   const tokenBase = draft.baseUrl.trim().replace(/\/+$/, '')
   const canCreateToken = /^https?:\/\//i.test(tokenBase)
@@ -127,7 +130,7 @@ export function ServerEditorModal({ run, sessionId, server, onSaved, onClose }: 
           </div>
           <div className="dshj-field">
             <label className="dshj-label-row">
-              <span>{t('tokenLabel')}<span className="dshj-req">*</span>{draft.isNew ? '' : t('keepToken')}</span>
+              <span>{t('tokenLabel')}{tokenRequired ? <span className="dshj-req">*</span> : null}{draft.isNew ? '' : t('keepToken')}</span>
               {canCreateToken ? (
                 <a className="dshj-link-btn" href={tokenUrl} target="_blank" rel="noopener noreferrer" title={tokenUrl}>{t('createToken')} ↗</a>
               ) : null}
@@ -137,7 +140,7 @@ export function ServerEditorModal({ run, sessionId, server, onSaved, onClose }: 
               className="dshj-input"
               value={draft.token}
               onChange={setField('token')}
-              placeholder={draft.isNew ? t('tokenPlaceholder') : (t('tokenSaved') + (draft.masked || '••••'))}
+              placeholder={draft.masked ? t('tokenSaved') + draft.masked : t('tokenPlaceholder')}
               autoComplete="off"
             />
           </div>
