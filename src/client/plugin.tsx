@@ -24,7 +24,7 @@ import { makeConfigModalStore, makeUpdateModalStore, type UpdateInfo } from './s
 import { FooterButton } from './components/FooterButton.tsx'
 import { JenkinsConfigModal } from './components/JenkinsConfigModal.tsx'
 import { PluginUpdateModal } from './components/PluginUpdateModal.tsx'
-import { t } from './i18n.ts'
+import { t, setLang } from './i18n.ts'
 
 /** 宿主 slots 服务最小视图。 */
 interface SlotsService {
@@ -39,6 +39,8 @@ const FOOTER_ENTRY_ID = 'dsh-jenkins'
 /** 浏览器侧插件上下文（宿主注入）。 */
 export interface ClientCtx {
   get<T = unknown>(name: string): T | undefined
+  /** cordis 事件订阅（可选：宿主 locale 服务缺失时的 'locale/change' 兜底通道）。 */
+  on?(event: string, listener: (payload: unknown) => void): unknown
   interval(callback: () => void, ms: number): () => void
   remote: {
     commands: {
@@ -59,6 +61,28 @@ export function createPlugin(): ClientPluginModule {
     inject: ['slots', 'remote', 'remote.commands', 'timer'],
 
     apply(ctx: ClientCtx) {
+      // ─── 语言跟随宿主：订阅宿主 locale 服务（软依赖）─────────────────
+      // 插件文案经 t()/getLang() 取词；slot 出口订阅宿主 locale revision，
+      // 语言切换时所有出口重渲染，t() 按当前 lang 解析即完成切换。宿主在
+      // locale 插件激活时才同步 <html lang>（早于用户持久化偏好的采纳），
+      // 静态解析只作 locale 服务缺失时的兜底。
+      interface LocaleFace {
+        getSnapshot(): { active: string }
+        subscribe(fn: () => void): () => void
+      }
+      const toLang = (active: string): 'zh' | 'en' => (/^zh/i.test(active) ? 'zh' : 'en')
+      const locale = ctx.get<LocaleFace>('locale')
+      if (locale !== undefined) {
+        const syncLang = (): void => { setLang(toLang(locale.getSnapshot().active)) }
+        syncLang()
+        locale.subscribe(syncLang)
+      } else if (typeof ctx.on === 'function') {
+        ctx.on('locale/change', (snapshot: unknown) => {
+          const active = (snapshot as { active?: string } | undefined)?.active
+          if (typeof active === 'string') setLang(toLang(active))
+        })
+      }
+
       const run: RunFn = makeRun(ctx)
       const { store: configStore, useOpen: useConfigOpen } = makeConfigModalStore()
       // 插件更新 store：版本信息（「有更新」胶囊显隐）+ 交互 UI 状态（确认弹框 → 日志大弹框）。

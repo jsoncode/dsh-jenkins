@@ -5,9 +5,10 @@
  * server 支持服务器名称 / id / 地址，弹框自动取交集并预选。
  */
 
-import { LANG } from './i18n.ts'
+import { getLang } from './i18n.ts'
 
-export const TEMPLATES: Record<'json' | 'js' | 'ts', string> = LANG === 'zh' ? {
+/** 按当前语言取配置模板（函数形式 —— 语言切换后重渲染即取新文案）。 */
+export const getTemplates = (): Record<'json' | 'js' | 'ts', string> => getLang() === 'zh' ? {
       json: '[\n'
         + '  {\n'
         + '    "job": "build-app",\n'
@@ -85,4 +86,5 @@ export const TEMPLATES: Record<'json' | 'js' | 'ts', string> = LANG === 'zh' ? {
         + '    environments: { BRANCH: \'release-1.0\', DEPLOY: true },\n'
         + '  },\n'
         + '] satisfies Array<Record<string, unknown>>',
-    }
+    };
+

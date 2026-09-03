@@ -1,7 +1,7 @@
 /**
  * dsh-jenkins —— 操作分发（命令与模型工具共用）：runOp 全部分支。
  *
- * 分支：workspaceConfig / workspaceTrigger / saveTemplate / list / save / delete / test /
+ * 分支：workspaceConfig / configParseContent / workspaceTrigger / saveTemplate / list / save / delete / test /
  * jobs / jobDetail / jobHistory / trigger / queueStatus / buildStatus / buildLog / cancel /
  * updateCheck / pluginUpdateStart / pluginUpdateStatus。
  */
@@ -17,7 +17,7 @@ import {
   jobSegments,
   normalizeBase,
 } from './jenkins.ts'
-import { loadWorkspaceConfig } from './workspace-config.ts'
+import { loadWorkspaceConfig, parseConfigFromContent } from './workspace-config.ts'
 import { checkPluginUpdate } from './update.ts'
 import { getPluginUpdateStatus, startPluginUpdate } from './plugin-update.ts'
 import type { FsService, HttpResponse, OpRequest, OpResult, PublicServer, ServerConfig, ShellService } from './types.ts'
@@ -94,16 +94,36 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
     }
   }
 
+  if (op === 'configParseContent') {
+    // 「发布」tab「选择配置」：用户在文件管理器中任意选中一个 dsh-jenkins 配置文件，
+    // 浏览器侧已读取其内容，这里按内容解析并归一化（.json 直读；.js/.ts 经 node 求值）。
+    const filename = String(req.filename || '').trim()
+    const content = typeof req.content === 'string' ? req.content : ''
+    if (!filename || !content.trim()) return { ok: false, code: 'config-empty', error: 'Missing config file content' }
+    try {
+      const shell = ctx.get('shell') as ShellService | undefined
+      if (shell === undefined) return { ok: false, code: 'fs-missing', error: 'shell service unavailable' }
+      const config = await parseConfigFromContent(shell, filename, content)
+      return { ok: true, config }
+    } catch (e) {
+      console.error('[dsh-jenkins] configParseContent error', e)
+      return { ok: false, code: errCodeOf(e), error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
   if (op === 'workspaceTrigger') {
     const cwd = String(req.cwd || '').trim()
-    if (!cwd) return { ok: false, code: 'cwd-missing', error: 'Missing workspace path' }
+    // 配置来源工作区：发布 tab「选择配置」从其他项目加载配置时传入；
+    // 缺省回退到 cwd（所选项目）。cwd 仍作为缓存/历史记录的工作区键。
+    const configCwd = String(req.configCwd || '').trim() || cwd
+    if (!configCwd) return { ok: false, code: 'cwd-missing', error: 'Missing workspace path' }
     try {
       const fsService = ctx.get('fs') as FsService | undefined
       const shell = ctx.get('shell') as ShellService | undefined
       if (fsService === undefined || shell === undefined) {
         return { ok: false, code: 'fs-missing', error: 'fs/shell service unavailable' }
       }
-      const config = await loadWorkspaceConfig(fsService, shell, cwd)
+      const config = await loadWorkspaceConfig(fsService, shell, configCwd)
       if (config === null) return { ok: false, code: 'no-config', error: 'No dsh-jenkins.json/js/ts config found in workspace root' }
       const entries = config.entries || []
       // 服务器解析顺序：弹框选择的 serverId → 配置元素匹配的服务器 → 唯一服务器。

@@ -119,6 +119,13 @@ export const css = [
   '.dshj-server-side.dshj-btn{padding-left:4px;padding-right:4px}',
   '.dshj-server-side.dshj-job-count{display:inline-flex;align-items:center;justify-content:center;margin:0;font-size:12px;color:var(--dsw-alias-label-secondary,#888)}',
   '.dshj-server-side-empty{color:var(--dsw-alias-label-tertiary,#aaa)}',
+  // 「发布」tab 项目行：手动选择配置后的来源提示行（grid 第二列下方）+ 清除按钮
+  '.dshj-file-input{display:none}',
+  '.dshj-config-source{grid-column:2;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dsw-alias-label-secondary,#888);padding:6px 0 0;min-width:0}',
+  '.dshj-config-source-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+  '.dshj-config-source-path{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--dsw-alias-label-primary,#222)}',
+  '.dshj-config-source-clear{flex:none;border:none;background:transparent;color:var(--dsw-alias-label-secondary,#888);font-size:12px;line-height:1;padding:4px 6px;border-radius:6px;cursor:pointer}',
+  '.dshj-config-source-clear:hover{color:var(--dsw-alias-state-error-primary,#d33);background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.12))}',
   '.dshj-divider{border-top:1px dashed var(--dsw-alias-border-l3,#bbb);margin:14px 18px 2px;flex:none}',
   '.dshj-picker{display:flex;align-items:center;gap:8px;width:100%;height:34px;padding:0 12px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2,#ccc);border-radius:8px;background:color-mix(in srgb,var(--dsw-alias-bg-base,#fff) 74%,transparent);color:var(--dsw-alias-label-primary,#222);font-size:13px;font-family:inherit;cursor:pointer;transition:border-color .15s,box-shadow .15s;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}',
   '.dshj-picker:hover:not(:disabled){border-color:var(--dsw-alias-border-l3,#b8b8b8)}',
@@ -249,7 +256,10 @@ export const css = [
   '.dshj-log-fullscreen .dshj-modal-body{padding:14px 18px}',
   '.dshj-log-body{display:flex;flex-direction:column;overflow:hidden;padding:14px 16px}',
   '.dshj-log-body .dshj-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}',
-  '.dshj-log-code{flex:1;min-height:0;max-height:none;margin:0;overflow:auto}',
+  // 日志代码区：flex:1 撑满弹框 body 剩余高度（最小/全屏模式一致）。
+  // 选择器必须高于通用 .dshj-code（定义在更靠后的「设置页」段，含 max-height:52vh）：
+  // 同优先级下后者会覆盖掉 max-height:none，导致日志卡片被 52vh 截断、下方留白。
+  '.dshj-log-body .dshj-log-code{flex:1;min-height:0;max-height:none;margin:0;overflow:auto}',
   '.dshj-log-truncated{font-size:12px;color:var(--dsw-alias-state-warn-primary,#b8860b);margin-top:8px;flex:none}',
   // 实时刷新指示：footer 左侧（margin-right:auto 把操作按钮推到右侧）+ 标题内小胶囊
   '.dshj-log-live{margin-right:auto;font-size:12px;color:var(--dsw-alias-state-success-primary,#2a7d3c);display:inline-flex;align-items:center;gap:6px;flex:none}',

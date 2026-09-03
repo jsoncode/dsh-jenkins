@@ -38,7 +38,9 @@ export interface JenkinsConfigModalProps {
   useSessions?: (selector: (s: { current?: string }) => unknown) => unknown
 }
 
-const TABS: Array<{ id: ConfigTab; label: string }> = [
+// tab 文案渲染时取词：模块加载早于 locale 订阅的初始 setLang，常量会在
+// 模块期固化 import 时的语言（曾固化成英文不再跟随切换）。
+const getTabs = (): Array<{ id: ConfigTab; label: string }> => [
   { id: 'publish', label: t('tabPublish') },
   { id: 'config', label: t('tabConfig') },
   { id: 'history', label: t('tabHistory') },
@@ -118,7 +120,7 @@ export function JenkinsConfigModal({ run, poller, storage, useOpen, close, useWo
           <div className="dshj-modal-sub">{cwd || ''}</div>
         </div>
         <div className="dshj-tabs dshj-config-tabs" role="tablist">
-          {TABS.map((item) => {
+          {getTabs().map((item) => {
             const count = item.id === 'config' ? configCount : item.id === 'history' ? historyCount : 0
             return (
               <button

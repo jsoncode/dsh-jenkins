@@ -2,14 +2,17 @@
  * dsh-jenkins —— 统一弹框「发布」tab：项目 → 服务器 / Job 选择 → 参数表单回显 →
  * 触发构建 → 轮询状态（排队 → 构建中 → 结果）。
  *
- * 不做配置门控：始终显示表单。顶部「项目」下拉列出 DSH 工作区，用户自选目标项目；
+ * 不做配置门控：始终显示表单。顶部「项目」下拉列出 DSH 工作区（首项「暂无」），用户自选目标项目；
  * 若所选项目存在 dsh-jenkins 配置（dsh-jenkins.json/js/ts），自动启用配置增强
  * （服务器下拉取配置交集、参数默认值、提交走 workspaceTrigger）；无配置时直接
  * 走 trigger 通道（用户手动选服务器 / Job / 参数）。
+ * 「选择配置」按钮打开系统文件管理器手动选择一个 dsh-jenkins 配置文件（浏览器读取内容
+ * 后经宿主 configParseContent 按内容解析），用其 entries 初始化下方表单；项目自动配置经
+ * workspaceTrigger 提交，手动选择的文件配置（无所属工作区）经 trigger 提交。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { ChangeEvent, ReactNode } from 'react'
 import { fmtDur, t, tErr } from '../i18n.ts'
 import { matchServer, type CachedLaunch, type HistoryEntry, type StorageApi } from '../storage.ts'
 import type { RunFn } from '../rpc.ts'
@@ -70,6 +73,8 @@ export interface WorkspaceItem {
 /** dsh-jenkins 工作区配置（存在时用于增强，不存在不阻塞）。 */
 interface WorkspaceConfig {
   entries: Array<{ job: string; server: string; parameters?: Record<string, string | number | boolean> }>
+  /** 配置文件相对工作区根目录的文件名（dsh-jenkins.json/js/ts）。 */
+  file?: string
 }
 
 export interface PublishTabProps {
@@ -92,45 +97,115 @@ export function PublishTab({ initialCwd, sessionId, run, poller, storage, worksp
   const paths = [...new Set((Array.isArray(workspaceItems) ? workspaceItems : [])
     .map((w) => (w && typeof w.path === 'string' ? w.path : ''))
     .filter((p): p is string => p !== ''))]
+  // 项目：'' = 「暂无」（不自动探测配置，可手动选择服务器 / Job，或点「选择配置」加载任意配置文件）
   const [project, setProject] = useState<string>(() => {
     if (initialCwd && paths.indexOf(initialCwd) !== -1) return initialCwd
     return paths.length ? paths[0] : ''
   })
-  // 所选项目的 dsh-jenkins 配置（可选）：存在则启用配置增强；不存在不阻塞发布。
-  const [config, setConfig] = useState<WorkspaceConfig | null>(null)
+  // 项目自动探测到的配置（工作区根目录 dsh-jenkins.json/js/ts）
+  const [projectConfig, setProjectConfig] = useState<WorkspaceConfig | null>(null)
+  // 「选择配置」经文件管理器手动选中的配置（优先于项目自动探测）：文件名 + 解析结果
+  const [fileConfig, setFileConfig] = useState<{ name: string; config: WorkspaceConfig } | null>(null)
+  const [configLoading, setConfigLoading] = useState(false)
+  const [configError, setConfigError] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  // 生效配置：手动选择的文件配置优先，否则回退项目自动探测
+  const config = fileConfig ? fileConfig.config : projectConfig
+  // 配置来源工作区：项目自动配置 = project（走 workspaceTrigger）；手动文件配置无所属工作区 → ''（走 trigger）
+  const configCwd = fileConfig ? '' : project
+
+  // 项目切换时自动探测该项目根目录的 dsh-jenkins 配置（无配置 / 探测失败不阻塞发布）
   useEffect(() => {
     let alive = true
-    setConfig(null)
+    setProjectConfig(null)
     if (!project) return
     run(sessionId, { op: 'workspaceConfig', cwd: project }).then((r) => {
       if (!alive) return
       const cfg = r && r.config as WorkspaceConfig | null | undefined
-      if (r && r.ok && r.found && cfg && Array.isArray(cfg.entries) && cfg.entries.length > 0) setConfig(cfg)
+      setProjectConfig(r && r.ok && r.found && cfg && Array.isArray(cfg.entries) && cfg.entries.length > 0 ? cfg : null)
     }).catch(() => { /* 配置探测失败不阻塞（按无配置处理） */ })
     return () => { alive = false }
   }, [project, sessionId, run])
+
+  // 选择配置文件：浏览器读取内容 → 交宿主按内容解析（json 直读 / js·ts node 求值）→ 初始化下方表单
+  const onPickFile = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files && e.target.files[0]
+    e.target.value = '' // 复位，允许重复选择同一文件
+    if (!file) return
+    setConfigLoading(true)
+    setConfigError('')
+    file.text()
+      .then((text) => run(sessionId, { op: 'configParseContent', filename: file.name, content: text }))
+      .then((r) => {
+        const cfg = r && r.config as WorkspaceConfig | null | undefined
+        if (r && r.ok && cfg && Array.isArray(cfg.entries) && cfg.entries.length > 0) {
+          setFileConfig({ name: file.name, config: cfg })
+        } else {
+          setFileConfig(null)
+          setConfigError(r && r.ok ? t('configEmptyEntries') : tErr(r, t('configParseFailed')))
+        }
+      })
+      .catch((err) => { setFileConfig(null); setConfigError(err instanceof Error ? err.message : String(err)) })
+      .finally(() => setConfigLoading(false))
+  }, [run, sessionId])
 
   return (
     <>
       <div className="dshj-server-field">
         <label className="dshj-server-label">{t('projectField')}</label>
-        {/* antd Select 风格：点击直接展开下拉面板，顶部搜索框输入即过滤 */}
-        <InlineSelect
-          value={project}
-          placeholder={paths.length === 0 ? t('noWorkspacesHint') : t('projectPlaceholder')}
-          searchPlaceholder={t('pickerSearchPlaceholder')}
-          options={paths.map((p): InlineSelectOption => ({ id: p, label: p }))}
-          disabled={paths.length === 0}
-          onChange={(id) => setProject(id)}
-        />
+        <div className="dshj-server-ctrl">
+          {/* antd Select 风格：点击直接展开下拉面板，顶部搜索框输入即过滤；
+              首项固定「暂无」（不自动探测配置），其后为 DSH 工作区路径 */}
+          <InlineSelect
+            value={project}
+            placeholder={paths.length === 0 ? t('noWorkspacesHint') : t('projectPlaceholder')}
+            searchPlaceholder={t('pickerSearchPlaceholder')}
+            options={[{ id: '', label: t('projectNone') }].concat(paths.map((p): InlineSelectOption => ({ id: p, label: p })))}
+            onChange={(id) => { setProject(id); setFileConfig(null); setConfigError('') }}
+          />
+          {/* 选择配置：打开系统文件管理器选择一个 dsh-jenkins 配置文件来初始化下方表单参数 */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,.js,.cjs,.mjs,.ts"
+            className="dshj-file-input"
+            onChange={onPickFile}
+          />
+          <button
+            type="button"
+            className="dshj-btn dshj-btn-small dshj-server-side"
+            title={t('selectConfigHint')}
+            disabled={configLoading}
+            onClick={() => fileInputRef.current && fileInputRef.current.click()}
+          >
+            {configLoading ? t('configPickLoading') : t('selectConfig')}
+          </button>
+        </div>
+        {fileConfig ? (
+          <div className="dshj-config-source">
+            <span className="dshj-config-source-text">
+              {t('configSourceLabel')}：<span className="dshj-config-source-path">{fileConfig.name}</span> · {t('configTargetCount', { n: fileConfig.config.entries.length })}
+            </span>
+            <button
+              type="button"
+              className="dshj-config-source-clear"
+              title={t('configClear')}
+              onClick={() => { setFileConfig(null); setConfigError('') }}
+            >✕</button>
+          </div>
+        ) : configError ? (
+          <div className="dshj-config-source"><span className="dshj-err">{configError}</span></div>
+        ) : null}
       </div>
-      <LauncherContent cwd={project} sessionId={sessionId} config={config} run={run} poller={poller} storage={storage} onCountChange={onCountChange} onFooter={onFooter} onOpenLog={onOpenLog} />
+      <LauncherContent cwd={project} configCwd={configCwd} sessionId={sessionId} config={config} run={run} poller={poller} storage={storage} onCountChange={onCountChange} onFooter={onFooter} onOpenLog={onOpenLog} />
     </>
   )
 }
 
-function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCountChange, onFooter, onOpenLog }: {
+function LauncherContent({ cwd, configCwd, sessionId, config, run, poller, storage, onCountChange, onFooter, onOpenLog }: {
   cwd: string
+  /** 配置来源工作区：项目自动配置 = 所选项目（非空，走 workspaceTrigger）；「选择配置」手动选文件时为空（走 trigger）。 */
+  configCwd: string
   sessionId: string
   config: WorkspaceConfig | null
   run: RunFn
@@ -144,10 +219,12 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
   const entries = config && Array.isArray(config.entries) ? config.entries : []
   // 配置中引用过的服务器标识（名称 / id / 地址），用于与已配置服务器取交集
   const configServerRefs = entries.map((e) => e.server).filter(Boolean)
-  // 上次发布回显缓存（按项目路径，宿主存储）：服务器 / Job / 参数
+  // 上次发布回显缓存（按项目路径，宿主存储）：服务器 / Job / 参数；
+  // 项目为「暂无」时（cwd 为空）不回显，避免把当前工作区的旧参数混入手动/外部配置
   const [cached, setCached] = useState<CachedLaunch | null>(null)
   useEffect(() => {
     let alive = true
+    if (!cwd) { setCached(null); return }
     void storage.readCache(sessionId, cwd).then((c) => { if (alive) setCached(c) })
     return () => { alive = false }
   }, [storage, sessionId, cwd])
@@ -347,13 +424,15 @@ function LauncherContent({ cwd, sessionId, config, run, poller, storage, onCount
     }
     const segments = selectedJobPath.split('/').filter(Boolean)
     try {
-      // 有配置 → workspaceTrigger（合并配置元素参数/服务器匹配）；无配置 → 直接 trigger。
-      const res = config
-        ? await run(sessionId, { op: 'workspaceTrigger', cwd, serverId: selectedServerId, job: selectedJobPath, parameters: submitValues })
+      // 项目自动配置（configCwd 非空）→ workspaceTrigger（宿主从 configCwd 重新加载配置，
+      // cwd 仅作缓存/历史记录的工作区键）；手动选择的文件配置（configCwd 为空）或无配置
+      // → 直接 trigger（服务器 / Job / 参数已由表单解析完毕）。
+      const res = config && configCwd
+        ? await run(sessionId, { op: 'workspaceTrigger', cwd, configCwd, serverId: selectedServerId, job: selectedJobPath, parameters: submitValues })
         : await run(sessionId, { op: 'trigger', serverId: selectedServerId, segments, parameters: submitValues })
       if (res && res.ok) {
-        // 记录本次发布（服务器 / Job / 参数），下次打开弹框自动回显
-        await storage.writeCache(sessionId, cwd, { serverId: selectedServerId, jobPath: selectedJobPath, parameters: submitValues })
+        // 记录本次发布（服务器 / Job / 参数），下次打开弹框自动回显（仅所选项目非「暂无」时）
+        if (cwd) await storage.writeCache(sessionId, cwd, { serverId: selectedServerId, jobPath: selectedJobPath, parameters: submitValues })
         // 追加到发布历史（时间、Job、服务器、参数、轮询数据；结果在轮询结束时回填）
         const resServerId = (res.serverId as string) || selectedServerId
         const resSegments = Array.isArray(res.segments) && (res.segments as unknown[]).length

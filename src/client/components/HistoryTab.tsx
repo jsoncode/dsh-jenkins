@@ -42,8 +42,10 @@ export function HistoryTab({ cwd, sessionId, run, poller, storage, onCountChange
   }
   const reload = useCallback((): void => {
     void storage.readAllHistory(sessionId).then((h) => {
-      setList(h)
-      if (onCountChange) onCountChange((h || []).length)
+      // 全量历史聚合了所有工作区，按触发时间降序（最新在最上面）
+      const sorted = [...(h || [])].sort((a, b) => (b.time || 0) - (a.time || 0))
+      setList(sorted)
+      if (onCountChange) onCountChange(sorted.length)
     }).catch(() => undefined)
   }, [storage, sessionId, onCountChange])
   // 全局轮询器每次回填结果后刷新列表（进行中 → 完成实时可见）

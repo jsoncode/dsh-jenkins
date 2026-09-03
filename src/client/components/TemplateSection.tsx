@@ -8,7 +8,7 @@
 import { useState } from 'react'
 import { t, tErr } from '../i18n.ts'
 import type { RunFn } from '../rpc.ts'
-import { TEMPLATES } from '../templates.ts'
+import { getTemplates } from '../templates.ts'
 import { InlineSelect } from './InlineSelect.tsx'
 import type { InlineSelectOption } from './InlineSelect.tsx'
 import { ModalPortal } from './ModalPortal.tsx'
@@ -54,7 +54,7 @@ export function TemplateSection({ run, sessionId, cwd, workspaces }: TemplateSec
     return projects.length ? projects[0] : ''
   })
   const tabs: Array<'json' | 'js' | 'ts'> = ['json', 'js', 'ts']
-  const code = TEMPLATES[active] || ''
+  const code = getTemplates()[active] || ''
   const filename = 'dsh-jenkins.' + active
   const doCopy = () => {
     const done = () => {

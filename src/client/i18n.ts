@@ -2,6 +2,11 @@
  * dsh-jenkins —— 浏览器半边：语言与文案（中英双语，跟随主界面语言）。
  */
 
+/**
+ * 初始语言：仅作宿主 locale 服务不可用时的兜底。宿主在 locale 插件激活时才
+ * 同步 <html lang>（早于用户持久化偏好的采纳），静态读取常得到服务端页面的
+ * 声明值而非真实偏好 —— 因此运行时以 plugin.tsx 里的 locale 订阅为准。
+ */
 function resolveLang(): 'zh' | 'en' {
   if (typeof document !== 'undefined') {
     const host = document.documentElement.lang || navigator.language || 'zh-CN'
@@ -10,7 +15,16 @@ function resolveLang(): 'zh' | 'en' {
   return 'zh'
 }
 
-export const LANG = resolveLang()
+/** 当前语言（可变，随宿主 locale 切换；经 setLang 更新）。 */
+let lang: 'zh' | 'en' = resolveLang()
+
+/** 读当前语言（组件内请调用此函数而非读取静态快照）。 */
+export const getLang = (): 'zh' | 'en' => lang
+
+/** 写当前语言（由宿主 locale 订阅驱动；重渲染由 slot 出口的 locale revision 订阅触发）。 */
+export const setLang = (next: 'zh' | 'en'): void => {
+  lang = next
+}
 
 const COPY: Record<'zh' | 'en', Record<string, unknown>> = {
   zh: {
@@ -30,6 +44,15 @@ const COPY: Record<'zh' | 'en', Record<string, unknown>> = {
     serverHistoryNoMatch: '无匹配的日志记录',
     projectField: '项目',
     projectPlaceholder: '搜索并选择项目…',
+    projectNone: '暂无',
+    selectConfig: '选择配置',
+    selectConfigHint: '打开文件管理器，选择一个 dsh-jenkins 配置文件（json/js/ts）来初始化下方表单参数',
+    configPickLoading: '解析中…',
+    configParseFailed: '配置文件解析失败',
+    configEmptyEntries: '配置文件中没有有效的发布目标',
+    configSourceLabel: '已选配置',
+    configClear: '清除',
+    configTargetCount: '{n} 个发布目标',
     noWorkspacesHint: '未发现工作区，请先打开一个工作区',
     serverField: '服务器',
     serverPlaceholder: '搜索并选择服务器…',
@@ -232,6 +255,15 @@ const COPY: Record<'zh' | 'en', Record<string, unknown>> = {
     serverHistoryNoMatch: 'No matching log records',
     projectField: 'Project',
     projectPlaceholder: 'Search and select a project…',
+    projectNone: 'None',
+    selectConfig: 'Select Config',
+    selectConfigHint: 'Open the file manager and pick a dsh-jenkins config file (json/js/ts) to initialize the form below',
+    configPickLoading: 'Parsing…',
+    configParseFailed: 'Failed to parse config file',
+    configEmptyEntries: 'No valid publish targets in the config file',
+    configSourceLabel: 'Selected config',
+    configClear: 'Clear',
+    configTargetCount: '{n} targets',
     noWorkspacesHint: 'No workspaces found; open a workspace first',
     serverField: 'Server',
     serverPlaceholder: 'Search and select server…',
@@ -419,10 +451,12 @@ const COPY: Record<'zh' | 'en', Record<string, unknown>> = {
   },
 }
 
-const dict = (COPY[LANG] || COPY.zh) as Record<string, any>
+/** 当前语言的词典（每次调用解析 —— 语言切换后即刻生效，无需重建模块状态）。 */
+const dictOf = (): Record<string, any> => (COPY[lang] || COPY.zh) as Record<string, any>
 
 /** 取文案并替换 {var} 占位符。 */
 export const t = (key: string, vars?: Record<string, string | number>): string => {
+  const dict = dictOf()
   let s = dict[key] !== undefined ? dict[key] : String(key)
   if (vars) {
     for (const k of Object.keys(vars)) {
@@ -434,10 +468,11 @@ export const t = (key: string, vars?: Record<string, string | number>): string =
 
 /** 宿主错误通过 code 映射为本地化文本，未知错误回退原文。 */
 export const tErr = (res: { code?: string; status?: number; error?: string; detail?: string } | null | undefined, fallback?: string): string => {
+  const dict = dictOf()
   if (res && res.code) {
     const local = dict.errors[res.code]
     if (local !== undefined) {
-      const zh = LANG === 'zh'
+      const zh = lang === 'zh'
       const sep = zh ? '：' : ': '
       if (res.code === 'trigger-http') {
         return t('triggerFailed') + (zh ? '（HTTP ' : ' (HTTP ') + res.status + (zh ? '）：' : '): ') + (res.detail || '')

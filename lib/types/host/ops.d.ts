@@ -1,7 +1,7 @@
 /**
  * dsh-jenkins —— 操作分发（命令与模型工具共用）：runOp 全部分支。
  *
- * 分支：workspaceConfig / workspaceTrigger / saveTemplate / list / save / delete / test /
+ * 分支：workspaceConfig / configParseContent / workspaceTrigger / saveTemplate / list / save / delete / test /
  * jobs / jobDetail / jobHistory / trigger / queueStatus / buildStatus / buildLog / cancel /
  * updateCheck / pluginUpdateStart / pluginUpdateStatus。
  */
