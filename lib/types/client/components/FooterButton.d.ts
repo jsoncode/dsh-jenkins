@@ -4,6 +4,11 @@
  * 点击打开统一弹框（发布 / 配置 / 历史 三个 tab）。不再按工作区配置门控 ——
  * 服务器配置入口本就应随时可达。
  *
+ * 显隐跟随「在菜单中显示」偏好（prefs.ts 的 showInMenuStore，默认开启）：
+ * 关闭后本组件渲染 null（不占位、不订阅轮询汇总）。偏好源与宿主
+ * 「设置 → Jenkins 配置」分区页、插件弹框「配置」tab 顶部的开关同一个，
+ * 改一处即刻生效，无需刷新页面。
+ *
  * 按钮右侧任务状态小胶囊（数据来自全局轮询器每次扫描的汇总）+ 更新提示胶囊：
  * - 橙色：构建中（含排队）任务数，无进行中任务时不显示；
  * - 绿色：构建成功但尚未在「历史」tab 查看过的条数，打开历史后自动消失；
@@ -29,5 +34,5 @@ export interface FooterButtonProps {
     /** 点击「有更新」胶囊：打开更新确认弹框。 */
     onUpdateRequest?: () => void;
 }
-export declare function FooterButton({ onOpen, reportSession, wide, useSessions, poller, useUpdate, onUpdateRequest }: FooterButtonProps): import("react").JSX.Element;
+export declare function FooterButton({ onOpen, reportSession, wide, useSessions, poller, useUpdate, onUpdateRequest }: FooterButtonProps): import("react").JSX.Element | null;
 //# sourceMappingURL=FooterButton.d.ts.map

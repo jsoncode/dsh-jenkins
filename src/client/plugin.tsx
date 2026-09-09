@@ -6,13 +6,15 @@
  * external，运行时经 factory 的 require 解析到宿主模块表（seed）。
  *
  * 入口结构（统一弹框）：
- * - sidebar.footer.action：常驻「Jenkins 配置」按钮（位于 dsh 配置按钮上方），
- *   打开统一弹框；右侧小胶囊展示构建状态汇总与「有更新」新版本提示（点击进入
- *   更新确认 → 更新日志弹框）；
+ * - sidebar.footer.action：「Jenkins 配置」按钮（位于 dsh 配置按钮上方），
+ *   打开统一弹框；显隐跟随「在菜单中显示」偏好（默认开启）。右侧小胶囊展示
+ *   构建状态汇总与「有更新」新版本提示（点击进入更新确认 → 更新日志弹框）；
+ * - settings.section（dsh-jenkins）：宿主「设置 → Jenkins 配置」分区页 ——
+ *   「在菜单中显示」开关 + 打开插件弹框的入口（footer 入口关闭后的唯一入口）；
  * - shell.overlay（dsh-jenkins-config）：统一弹框，四个 tab —— 发布 / 配置 / 本机记录 / 历史记录，
  *   分别承载原执行 Job 弹框、设置页、发布历史弹框、服务器真实构建记录的内容；
  * - shell.overlay（dsh-jenkins-update）：插件更新流程弹框（确认更新 / 更新日志）；
- * - 原 launcher / history 两个独立 overlay 与 settings.section 注册已移除。
+ * - 原 launcher / history 两个独立 overlay 注册已移除。
  */
 
 import type { ReactNode } from 'react'
@@ -22,6 +24,7 @@ import { createStorage } from './storage.ts'
 import { createPoller } from './poller.ts'
 import { makeConfigModalStore, makeUpdateModalStore, type UpdateInfo } from './store.ts'
 import { FooterButton } from './components/FooterButton.tsx'
+import { PluginSettingsPage } from './components/PluginSettingsPage.tsx'
 import { JenkinsConfigModal } from './components/JenkinsConfigModal.tsx'
 import { PluginUpdateModal } from './components/PluginUpdateModal.tsx'
 import { t, setLang } from './i18n.ts'
@@ -35,6 +38,9 @@ interface SlotsService {
 /** 侧边栏 footer 插槽 key 与本插件入口 id。 */
 const FOOTER_SLOT = 'sidebar.footer.action'
 const FOOTER_ENTRY_ID = 'dsh-jenkins'
+
+/** 宿主设置对话框里本插件分区页的注册 id（settings.section 的 only 过滤键）。 */
+const SECTION_ID = 'dsh-jenkins'
 
 /** 浏览器侧插件上下文（宿主注入）。 */
 export interface ClientCtx {
@@ -153,6 +159,25 @@ export function createPlugin(): ClientPluginModule {
             poller={poller}
             useUpdate={updateModalStore.useUpdate}
             onUpdateRequest={() => updateModalStore.openUpdateConfirm()}
+          />
+        ),
+      ))
+
+      // ─── 宿主「设置 → Jenkins 配置」分区页（settings.section）──────────
+      // 页面承载「在菜单中显示」开关（与 footer 入口同一偏好源）+ 打开插件
+      // 弹框的入口：侧栏入口被关闭后，这里是唯一可达入口。order 41 排在宿主
+      // 内置 sections 与 dsh-model-list（order 40）之后。
+      slots.inject('settings.section', () => slots.register(
+        {
+          name: 'settings.section',
+          id: SECTION_ID,
+          order: 41,
+          label: () => t('settingsNav'),
+        },
+        (props: Record<string, unknown>) => (
+          <PluginSettingsPage
+            onOpen={() => configStore.open(true)}
+            close={typeof props.close === 'function' ? (props.close as () => void) : () => { /* 宿主未提供 close 时忽略 */ }}
           />
         ),
       ))

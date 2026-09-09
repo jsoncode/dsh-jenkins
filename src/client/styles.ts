@@ -9,26 +9,27 @@ export const css = [
   '.dshj-btn{border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-primary);border-radius:8px;padding:6px 14px;font-size:13px;cursor:pointer}',
   '.dshj-btn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.12))}',
   '.dshj-btn:disabled{opacity:.5;cursor:not-allowed}',
-  // 磨砂玻璃按钮：主色改为半透明填充 + 背后内容高斯模糊（backdrop-filter），避免完全遮盖底层内容
-  // 填充按钮：更低的基础不透明度（58%），hover 仅 +6 个百分点，避免背景过深压过文字
-  '.dshj-btn-primary{--dshj-glass-fill:var(--dsw-alias-button-primary-fill,var(--dsw-alias-brand-primary,#1668e3));background:color-mix(in srgb,var(--dshj-glass-fill) 58%,transparent);border-color:transparent;color:var(--dsw-alias-label-primary-foreground,#fff);-webkit-backdrop-filter:blur(10px) saturate(1.4);backdrop-filter:blur(10px) saturate(1.4)}',
-  '.dshj-btn-primary:hover:not(:disabled){background:color-mix(in srgb,var(--dshj-glass-fill) 64%,transparent)}',
+  // 主按钮：实心主色填充（对齐 dsh-get-balance .dshb-btn-primary）。宿主
+  // button-primary-fill 浅色主题为近黑 #0f1115、深色主题为近白 #f9fafb，
+  // 半透明化会把它冲淡成灰、白字对比度掉到 4:1 左右；实心填充才稳定。
+  '.dshj-btn-primary{background:var(--dsw-alias-button-primary-fill,var(--dsw-alias-brand-primary,#1668e3));border-color:transparent;color:var(--dsw-alias-label-primary-foreground,#fff)}',
+  '.dshj-btn-primary:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover,var(--dsw-alias-brand-primary,#1668e3))}',
   '.dshj-head-ops{display:flex;align-items:center;gap:8px;flex:none}',
   '.dshj-btn-icon{border:none;background:transparent;color:var(--dsw-alias-label-secondary,#888);width:24px;height:24px;padding:0;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}',
   '.dshj-btn-icon:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.12));color:var(--dsw-alias-label-primary,#222)}',
   '.dshj-btn-danger{color:var(--dsw-alias-state-error-primary);border-color:currentColor}',
   '.dshj-btn-success{color:var(--dsw-alias-state-success-primary,#2a7d3c);border-color:currentColor;background:color-mix(in srgb,var(--dsw-alias-state-success-primary,#2a7d3c) 10%,transparent)}',
   '.dshj-btn-success:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-success-primary,#2a7d3c) 16%,transparent)}',
-  // 磨砂玻璃按钮：危险实心按钮同样半透明化 + 高斯模糊
-  '.dshj-btn-solid{--dshj-glass-fill:var(--dsw-alias-state-error-primary,#d33);background:color-mix(in srgb,var(--dshj-glass-fill) 58%,transparent);border-color:transparent;color:#fff;-webkit-backdrop-filter:blur(10px) saturate(1.4);backdrop-filter:blur(10px) saturate(1.4)}',
-  '.dshj-btn-solid:hover:not(:disabled){background:color-mix(in srgb,var(--dshj-glass-fill) 64%,transparent)}',
+  // 危险实心按钮：实心错误色 + 白字，hover 压暗 12%（与主按钮同为实心方案）
+  '.dshj-btn-solid{background:var(--dsw-alias-state-error-primary,#d33);border-color:transparent;color:#fff}',
+  '.dshj-btn-solid:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#d33) 88%,#000)}',
   '.dshj-btn-small{padding:3px 10px;font-size:12px}',
   '.dshj-btn-active{border-color:var(--dsw-alias-brand-primary,#1668e3);color:var(--dsw-alias-brand-primary,#1668e3)}',
   '.dshj-err{color:var(--dsw-alias-state-error-primary,#d33);font-size:13px;margin:8px 0}',
   '.dshj-ok{color:var(--dsw-alias-state-success-primary,#2a7d3c);font-size:13px;margin:8px 0}',
   '.dshj-warn{color:var(--dsw-alias-state-warn-primary,#b8860b)}',
   '.dshj-empty{padding:28px 16px;text-align:center;color:var(--dsw-alias-label-secondary,#888);font-size:13px}',
-  '.dshj-input,.dshj-select,.dshj-textarea{width:100%;box-sizing:border-box;background:color-mix(in srgb,var(--dsw-alias-bg-base,#fff) 86%,transparent);color:var(--dsw-alias-label-primary,#222);border:1px solid var(--dsw-alias-border-l2,#ccc);border-radius:8px;padding:8px 12px;font-size:13px;font-family:inherit;transition:border-color .15s,box-shadow .15s,background .15s;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}',
+  '.dshj-input,.dshj-select,.dshj-textarea{width:100%;box-sizing:border-box;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#222);border:1px solid var(--dsw-alias-border-l2,#ccc);border-radius:8px;padding:8px 12px;font-size:13px;font-family:inherit;transition:border-color .15s,box-shadow .15s}',
   '.dshj-input:hover,.dshj-select:hover,.dshj-textarea:hover{border-color:var(--dsw-alias-border-l3,#b8b8b8)}',
   '.dshj-input:focus,.dshj-select:focus,.dshj-textarea:focus{outline:none;border-color:var(--dsw-alias-brand-primary,#1668e3);box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-brand-primary,#1668e3) 18%,transparent)}',
   '.dshj-input::placeholder,.dshj-textarea::placeholder{color:var(--dsw-alias-label-tertiary,#aaa)}',
@@ -85,10 +86,15 @@ export const css = [
   '.dshj-capsule-wrap{display:inline-flex;align-items:center;justify-content:center;width:auto;height:42px;padding:0;margin:0;border:none;background:transparent;color:inherit;font:inherit;cursor:pointer;pointer-events:auto;flex:none;box-sizing:border-box;border-radius:999px}',
   '.dshj-footer-rail-group .dshj-capsule-wrap{height:24px}',
   // 宿主 sidebar.footer.action 列表容器：slots 渲染器为每个插槽输出稳定的
-  // [data-slot] 锚点（display:contents，不参与布局），其父容器即宿主的
-  // footer 行容器。宿主默认 flex 行布局会把多个插件注册的按钮挤在一行，
-  // 这里改为纵向堆叠：每个按钮独占一行、按注册 order 升序排列。
-  'div:has(> [data-slot="sidebar.footer.action"]){flex-direction:column}',
+  // [data-slot] 锚点（display:contents，不参与布局），其父容器即宿主的 footer
+  // 行容器。宿主默认 flex 行布局会把多个插件注册的入口挤在一行（本插件按钮宽
+  // 度 100%，会横向溢出），因此改为纵向堆叠。
+  //
+  // 作用域：选择器以**本插件自己的** .dshj-footer-group 为锚点 —— 宿主容器里
+  // 没有本插件入口时不可能命中，因此不会影响宿主任何其它 DOM；外层 :where()
+  // 把优先级压到 0，宿主随时可以覆盖。这是本插件唯一一条不带 dshj- 前缀的
+  // 声明，其余样式全部以 .dshj- 作用域限定。
+  ':where(div:has(> [data-slot="sidebar.footer.action"] > .dshj-footer-group)){flex-direction:column}',
   // 弹框
   // 弹框遮罩与弹框本体：半透明 + 高斯模糊（毛玻璃），背景内容隐约可见而非被完全覆盖
   '.dshj-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.32);z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px;pointer-events:auto;-webkit-backdrop-filter:blur(12px) saturate(1.2);backdrop-filter:blur(12px) saturate(1.2)}',
@@ -99,12 +105,10 @@ export const css = [
   '.dshj-close{border:none;background:transparent;color:var(--dsw-alias-label-secondary,#888);font-size:16px;cursor:pointer;padding:4px 8px;border-radius:6px}',
   '.dshj-close:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.15));color:var(--dsw-alias-label-primary,#222)}',
   '.dshj-tabs{display:flex;gap:6px;padding:10px 18px;border-bottom:1px solid var(--dsw-alias-border-l1,#eee);overflow-x:auto;flex:none}',
-  // 未选中 tab：淡淡的半透明填充 + 描边，突出按钮轮廓；选中 tab 为蓝色玻璃底（无描边）
-  '.dshj-tab{padding:5px 12px;border:1px solid var(--dsw-alias-border-l2,#ccc);border-radius:8px;background:color-mix(in srgb,var(--dsw-alias-bg-base,#fff) 40%,transparent);color:var(--dsw-alias-label-secondary,#666);font-size:13px;cursor:pointer;white-space:nowrap}',
-  // 非选中 tab 才用灰色 hover（加深填充 + 描边）；选中 tab 有专属的轻微 hover（否则 :hover 特异性更高会盖掉蓝色玻璃底）
-  '.dshj-tab:not(.dshj-tab-active):hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.12));border-color:var(--dsw-alias-border-l3,#b8b8b8)}',
-  '.dshj-tab-active{--dshj-glass-fill:var(--dsw-alias-button-primary-fill,var(--dsw-alias-brand-primary,#1668e3));background:color-mix(in srgb,var(--dshj-glass-fill) 58%,transparent);color:var(--dsw-alias-label-primary-foreground,#fff);border-color:transparent;font-weight:500;-webkit-backdrop-filter:blur(10px) saturate(1.4);backdrop-filter:blur(10px) saturate(1.4)}',
-  '.dshj-tab-active:hover{background:color-mix(in srgb,var(--dshj-glass-fill) 64%,transparent)}',
+  // tab 组：未选中透明 + 次级文字，选中为实心主色胶囊（对齐 dsh-get-balance .dshb-tab）
+  '.dshj-tab{padding:5px 12px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary,#666);font-size:13px;cursor:pointer;white-space:nowrap}',
+  '.dshj-tab:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.1))}',
+  '.dshj-tab-active{background:var(--dsw-alias-button-primary-fill,var(--dsw-alias-brand-primary,#1668e3));color:var(--dsw-alias-label-primary-foreground,#fff);border-color:transparent;font-weight:500}',
   '.dshj-badge{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 5px;margin-left:6px;border-radius:999px;font-size:11px;line-height:1;font-weight:600;background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.15));color:var(--dsw-alias-label-secondary,#666)}',
   '.dshj-tab-active .dshj-badge{background:color-mix(in srgb,var(--dsw-alias-label-primary-foreground,#fff) 68%,transparent);color:var(--dsw-alias-button-primary-fill,var(--dsw-alias-brand-primary,#1668e3))}',
   // 「历史」tab 未读指示点：存在发布后未查看的条目时显示在 tab 文字旁
@@ -127,7 +131,7 @@ export const css = [
   '.dshj-config-source-clear{flex:none;border:none;background:transparent;color:var(--dsw-alias-label-secondary,#888);font-size:12px;line-height:1;padding:4px 6px;border-radius:6px;cursor:pointer}',
   '.dshj-config-source-clear:hover{color:var(--dsw-alias-state-error-primary,#d33);background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.12))}',
   '.dshj-divider{border-top:1px dashed var(--dsw-alias-border-l3,#bbb);margin:14px 18px 2px;flex:none}',
-  '.dshj-picker{display:flex;align-items:center;gap:8px;width:100%;height:34px;padding:0 12px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2,#ccc);border-radius:8px;background:color-mix(in srgb,var(--dsw-alias-bg-base,#fff) 74%,transparent);color:var(--dsw-alias-label-primary,#222);font-size:13px;font-family:inherit;cursor:pointer;transition:border-color .15s,box-shadow .15s;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}',
+  '.dshj-picker{display:flex;align-items:center;gap:8px;width:100%;height:34px;padding:0 12px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2,#ccc);border-radius:8px;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#222);font-size:13px;font-family:inherit;cursor:pointer;transition:border-color .15s,box-shadow .15s}',
   '.dshj-picker:hover:not(:disabled){border-color:var(--dsw-alias-border-l3,#b8b8b8)}',
   '.dshj-picker:focus{outline:none;border-color:var(--dsw-alias-brand-primary,#1668e3);box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-brand-primary,#1668e3) 18%,transparent)}',
   '.dshj-picker:disabled{opacity:.5;cursor:not-allowed}',
@@ -137,8 +141,9 @@ export const css = [
   // antd Select 风格的内联下拉（InlineSelect）：触发器复用 .dshj-picker，面板贴触发器下方展开
   '.dshj-combo{position:relative;min-width:0}',
   '.dshj-combo .dshj-picker{width:100%}',
-  // 下拉面板：毛玻璃化，展开时不完全遮住下方内容
-  '.dshj-combo-panel{position:fixed;z-index:2000;display:flex;flex-direction:column;background:color-mix(in srgb,var(--dsw-alias-bg-layer-1,#fff) 82%,transparent);border:1px solid var(--dsw-alias-border-l2,#ccc);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);overflow:hidden;-webkit-backdrop-filter:blur(18px) saturate(1.5);backdrop-filter:blur(18px) saturate(1.5)}',
+  // 下拉面板：不透明抬升面板（对齐 dsh-get-balance 的浮层底板 bg-layer-1），
+  // 避免半透明面板叠加弹框玻璃底后文字对比度随背景漂移
+  '.dshj-combo-panel{position:fixed;z-index:2000;display:flex;flex-direction:column;background:var(--dsw-alias-bg-layer-1,#fff);border:1px solid var(--dsw-alias-border-l2,#ccc);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);overflow:hidden}',
   '.dshj-combo-search{padding:8px;border-bottom:1px solid var(--dsw-alias-border-l1,#eee);flex:none}',
   '.dshj-combo-search .dshj-input{padding:6px 10px;font-size:13px}',
   '.dshj-combo-list{flex:1;min-height:0;overflow-y:auto;padding:4px}',
@@ -198,7 +203,7 @@ export const css = [
   '.dshj-server-history-desc{font-size:12px;color:var(--dsw-alias-label-secondary,#888);margin-top:7px;line-height:1.5;word-break:break-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
   '.dshj-history-modal{min-height:420px;max-height:82vh;width:640px}',
   '.dshj-history-list{display:flex;flex-direction:column;gap:10px;padding:14px 2px 4px}',
-  '.dshj-history-item{border:1px solid var(--dsw-alias-border-l1,#eee);border-radius:10px;padding:10px 14px;background:color-mix(in srgb,var(--dsw-alias-bg-base,#fff) 64%,transparent);transition:border-color .15s,background .15s;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}',
+  '.dshj-history-item{border:1px solid var(--dsw-alias-border-l1,#eee);border-radius:10px;padding:10px 14px;background:var(--dsw-alias-bg-layer-2,#fafafa);transition:border-color .15s}',
   '.dshj-history-item:hover{border-color:var(--dsw-alias-border-l2,#ddd)}',
   // 历史条目操作按钮行：查看详情（打开日志弹框）/ 打开原始任务（浏览器跳转 Jenkins）
   '.dshj-history-actions{display:flex;align-items:center;gap:8px;margin-top:9px;flex-wrap:wrap}',
@@ -274,8 +279,8 @@ export const css = [
   '.dshj-select-hint{font-size:13px;color:var(--dsw-alias-label-secondary,#888);margin-bottom:6px}',
   '.dshj-inflight-title{font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary,#666);margin:6px 0 8px}',
   '.dshj-inflight-list{display:flex;flex-direction:column;gap:8px}',
-  '.dshj-inflight-item{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;padding:8px 12px;border:1px solid var(--dsw-alias-border-l1,#eee);border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-bg-base,#fff) 64%,transparent);color:var(--dsw-alias-label-primary,#222);font-size:13px;font-family:inherit;cursor:pointer;transition:border-color .15s,background .15s;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}',
-  '.dshj-inflight-item:hover{border-color:var(--dsw-alias-brand-primary,#1668e3);background:color-mix(in srgb,var(--dsw-alias-brand-primary,#1668e3) 5%,color-mix(in srgb,var(--dsw-alias-bg-base,#fff) 64%,transparent))}',
+  '.dshj-inflight-item{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;padding:8px 12px;border:1px solid var(--dsw-alias-border-l1,#eee);border-radius:10px;background:var(--dsw-alias-bg-layer-2,#fafafa);color:var(--dsw-alias-label-primary,#222);font-size:13px;font-family:inherit;cursor:pointer;transition:border-color .15s,background .15s}',
+  '.dshj-inflight-item:hover{border-color:var(--dsw-alias-brand-primary,#1668e3);background:color-mix(in srgb,var(--dsw-alias-brand-primary,#1668e3) 5%,var(--dsw-alias-bg-layer-2,#fafafa))}',
   '.dshj-inflight-main{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
   '.dshj-inflight-meta{display:flex;align-items:center;gap:6px;flex:none;max-width:45%;overflow:hidden}',
   '.dshj-inflight-meta .dshj-history-result{margin:0;flex:none}',
@@ -289,19 +294,36 @@ export const css = [
   '.dshj-link:hover{text-decoration:underline}',
   // 设置页
   '.dshj-settings{display:flex;flex-direction:column;gap:12px}',
+  // 「在菜单中显示」滑动开关行（宿主设置分区页顶部 + 弹框「配置」tab 顶部同一组件）
+  '.dshj-pref{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2,#ddd);border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-bg-base,#fff) 60%,transparent)}',
+  '.dshj-pref-text{min-width:0;display:flex;flex-direction:column;gap:2px}',
+  '.dshj-pref-label{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary,#222)}',
+  '.dshj-pref-desc{font-size:12px;color:var(--dsw-alias-label-secondary,#888)}',
+  // 滑动开关：与 dsh-get-balance .dshb-switch 完全同款 —— 关闭态轨道取
+  // label-primary 42%（比 label-secondary 30% 明显更深，与白色圆心对比清晰），
+  // 开启态实心绿 #16a34a，圆心 18px 带极细内描边 + 投影，focus-visible 用品牌色光晕。
+  '.dshj-switch{position:relative;display:inline-block;width:40px;height:22px;padding:0;border:none;border-radius:999px;background:color-mix(in srgb,var(--dsw-alias-label-primary,#222) 42%,transparent);cursor:pointer;flex:none;transition:background-color .2s}',
+  '.dshj-switch:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary,#222) 55%,transparent)}',
+  '.dshj-switch:focus-visible{outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-brand-primary,#1668e3) 18%,transparent)}',
+  '.dshj-switch-on{background:#16a34a}',
+  '.dshj-switch-on:hover{background:#117f39}',
+  '.dshj-switch-knob{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:inset 0 0 0 1px rgba(0,0,0,.06),0 1px 4px rgba(0,0,0,.35);transition:left .2s cubic-bezier(.25,.8,.35,1)}',
+  '.dshj-switch-on .dshj-switch-knob{left:20px}',
+  // 宿主设置分区页里的「打开插件」按钮行
+  '.dshj-pref-open{display:flex;gap:8px}',
   '.dshj-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}',
   '.dshj-title{font-size:14px;font-weight:600}',
   '.dshj-list{display:flex;flex-direction:column;gap:8px}',
-  '.dshj-card{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-bg-layer-2,#fafafa) 64%,transparent);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}',
+  '.dshj-card{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-2,#fafafa)}',
   '.dshj-card-main{min-width:0}',
   '.dshj-card-name-row{display:flex;align-items:center;gap:8px;min-width:0}',
   '.dshj-card-name{font-size:13px;font-weight:600;flex:none}',
   '.dshj-card-test{margin:0;font-size:12px;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}',
   '.dshj-card-meta{font-size:12px;color:var(--dsw-alias-label-secondary,#888);margin-top:2px;word-break:break-all}',
   '.dshj-card-ops{display:flex;gap:6px;flex:none;flex-wrap:wrap}',
-  '.dshj-result{font-size:12px;padding:8px 10px;border-radius:8px;background:color-mix(in srgb,var(--dsw-alias-bg-layer-2,#fafafa) 64%,transparent);margin-top:8px;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}',
+  '.dshj-result{font-size:12px;padding:8px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,#fafafa);margin-top:8px}',
   // 配置模板内联区
-  '.dshj-template{border:1px solid var(--dsw-alias-border-l2);border-radius:12px;padding:12px 14px;background:color-mix(in srgb,var(--dsw-alias-bg-layer-2,#fafafa) 64%,transparent);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}',
+  '.dshj-template{border:1px solid var(--dsw-alias-border-l2);border-radius:12px;padding:12px 14px;background:var(--dsw-alias-bg-layer-2,#fafafa)}',
   '.dshj-template-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px}',
   '.dshj-template-title{font-size:13px;font-weight:600}',
   '.dshj-template-tabs{display:flex;gap:6px}',
@@ -323,7 +345,7 @@ export const css = [
   '.dshj-template-project > label{font-size:12px;font-weight:500;color:var(--dsw-alias-label-secondary,#666);flex:none;white-space:nowrap}',
   '.dshj-template-project .dshj-combo{flex:1;min-width:0}',
   // 降级兜底：引擎不支持 backdrop-filter 时恢复不透明填充，保证可读性
-  '@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))){.dshj-modal,.dshj-combo-panel{background:var(--dsw-alias-bg-layer-1,#fff)}.dshj-history-item,.dshj-inflight-item,.dshj-picker,.dshj-code,.dshj-input,.dshj-select,.dshj-textarea{background:var(--dsw-alias-bg-base,#fff)}.dshj-card,.dshj-template,.dshj-result{background:var(--dsw-alias-bg-layer-2,#fafafa)}.dshj-chip{background:var(--dsw-alias-bg-layer-2,#f5f6f8)}.dshj-btn-primary,.dshj-btn-solid,.dshj-tab-active{background:var(--dshj-glass-fill)}.dshj-footer-logo{background:#D33833}}',
+  '@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))){.dshj-modal{background:var(--dsw-alias-bg-layer-1,#fff)}.dshj-code{background:var(--dsw-alias-bg-base,#fff)}.dshj-footer-logo{background:#D33833}}',
 ].join('\n')
 
 /** 注入 <style>（幂等：已存在则不重复注入）。 */

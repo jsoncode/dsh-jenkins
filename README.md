@@ -40,6 +40,11 @@ Screenshots of the Settings page, workspace entry and run/history modals: see [p
   parameters. The last submitted **server / job / parameters** are remembered per
   workspace and auto-echoed the next time the modal opens (browser `localStorage`).
   A missing or invalid config file is treated as "not configured" — no entry is shown.
+- **Entry visibility**: the sidebar entry follows a **Show in menu** preference
+  (default on), toggled from **Settings → Jenkins Config** or the top of the
+  modal's **Config** tab. When off the entry renders nothing; the host settings
+  page keeps an **Open Jenkins Config** button so the modal stays reachable
+  (both places share one preference source and stay in sync).
 - **Model tools** (docs/develop/basic/tool): `dsh_jenkins_build`, `dsh_jenkins_status`.
 - **Config** (docs/develop/basic/config): Schemastery `Config` + a plugin data file
   `$DSH_HOME/dsh-jenkins.json` (server tokens encrypted with the machine-bound key
@@ -207,4 +212,18 @@ pnpm run verify        # simulate the host seed table to check lib/client.js loa
 - The official `deepseek-harness` project is **not modified**; all features use existing
   slots (`sidebar.footer.action`, `settings.section`, `shell.overlay`) and the command
   transport.
+- **Style isolation**: every rule in the injected stylesheet is scoped to `.dshj-*`
+  with one deliberate exception — `:where(div:has(> [data-slot="sidebar.footer.action"] > .dshj-footer-group)){flex-direction:column}`,
+  which stacks the host footer container (the host lays it out as a flex **row**, so
+  several plugin entries would squeeze onto one line). It can only match a container
+  that already holds **this plugin's own entry**, and `:where()` drops its specificity
+  to 0 so the host can always override it. Keyframe names are `dshj-`-prefixed and the
+  style tag is marked `data-plugin-css="dsh-jenkins/settings.css"`; no other global
+  selector, no `:root`/`body`/`*` rule, no body-style mutation.
+- **Dialog palette**: the modals follow dsh-get-balance — a `rgba(0,0,0,.32)` scrim
+  with `blur(12px) saturate(1.2)`, a `color-mix(bg-layer-1 78%)` glass panel with a
+  `border-l2` hairline and 14px radius, `border-l1` header/footer dividers, solid
+  `button-primary-fill` primary buttons and active tabs (translucent fills washed the
+  host's monochrome `#0f1115` / `#f9fafb` primary into grey), `bg-base` inputs and
+  dropdown panels, `bg-layer-2` cards, and `state-*` tokens for status colours.
 

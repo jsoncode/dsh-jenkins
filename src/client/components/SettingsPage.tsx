@@ -9,6 +9,7 @@ import type { RunFn } from '../rpc.ts'
 import { ServerEditorModal } from './ServerEditorModal.tsx'
 import type { PublicServer } from './ServerEditorModal.tsx'
 import { TemplateModal } from './TemplateModal.tsx'
+import { ShowInMenuToggle } from './ShowInMenuToggle.tsx'
 
 interface TestResult {
   ok: boolean
@@ -79,6 +80,8 @@ export function SettingsPage({ run, sessionId, cwd, workspaceItems, onCountChang
 
   return (
     <div className="dshj-settings">
+      {/* 「在菜单中显示」开关：与宿主「设置 → Jenkins 配置」分区页同一偏好源 */}
+      <ShowInMenuToggle />
       <div className="dshj-head">
         <div className="dshj-title">{t('settingsTitle')}</div>
         <div className="dshj-head-ops">

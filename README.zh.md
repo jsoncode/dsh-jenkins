@@ -33,6 +33,9 @@
   插件已配置服务器」的交集，选中服务器后自动预选配置里对应的 Job 并回填参数；
   同一工作区上次发布时提交的 **服务器 / Job / 参数**会被记住，下次打开弹框自动回显
   （浏览器 `localStorage`）。配置文件缺失或解析/校验失败时视为未配置，不显示入口。
+- **入口显隐**：侧栏入口跟随「在菜单中显示」偏好（默认开启），可在 **设置 → Jenkins 配置**
+  分区页或执行弹框「配置」tab 顶部切换。关闭后入口渲染 null（不占位），宿主设置分区页
+  仍保留 **打开 Jenkins 配置** 按钮，弹框始终可达（两处同一个偏好源，改一处即时同步）。
 - **模型工具**（docs/develop/basic/tool）：`dsh_jenkins_build`、`dsh_jenkins_status`。
 - **配置**（docs/develop/basic/config）：Schemastery `Config` + 插件数据文件
   `$DSH_HOME/dsh-jenkins.json`（服务器 Token 以 `$DSH_HOME/dsh-jenkins.key`
@@ -186,4 +189,14 @@ pnpm run verify        # 模拟宿主 seed 表校验 lib/client.js 可加载
   cordis-client-runner、`react`）由宿主安装时解析。
 - **未修改官方 deepseek-harness 项目**：全部能力走现有 slot（`sidebar.footer.action`、
   `settings.section`、`shell.overlay`）与命令传输。
+- **样式隔离**：注入的样式表除一条刻意保留的例外，全部限定在 `.dshj-*` 作用域内 ——
+  `:where(div:has(> [data-slot="sidebar.footer.action"] > .dshj-footer-group)){flex-direction:column}`
+  用于把宿主 footer 容器从默认 flex 横排改为纵向堆叠（否则多个插件入口会被挤在一行）。
+  它只可能命中「容器内已存在本插件入口」的那一层，且外层 `:where()` 把优先级压到 0，
+  宿主随时可覆盖。动画名统一 `dshj-` 前缀，style 标签带 `data-plugin-css="dsh-jenkins/settings.css"`
+  标记；没有其它全局选择器，不写 `:root`/`body`/`*`，也不修改 body 行内样式。
+- **弹框配色**：与 dsh-get-balance 同一套 —— `rgba(0,0,0,.32)` 蒙版 + `blur(12px) saturate(1.2)`、
+  `color-mix(bg-layer-1 78%)` 玻璃面板 + `border-l2` 细描边 + 14px 圆角、`border-l1` 头/脚分隔线、
+  主按钮与选中 tab 用实心 `button-primary-fill`（半透明填充会把宿主单色主色 #0f1115 / #f9fafb
+  冲淡成灰）、输入框与下拉面板 `bg-base`、卡片 `bg-layer-2`、状态文字走 `state-*` 令牌。
 

@@ -4,6 +4,11 @@
  * 点击打开统一弹框（发布 / 配置 / 历史 三个 tab）。不再按工作区配置门控 ——
  * 服务器配置入口本就应随时可达。
  *
+ * 显隐跟随「在菜单中显示」偏好（prefs.ts 的 showInMenuStore，默认开启）：
+ * 关闭后本组件渲染 null（不占位、不订阅轮询汇总）。偏好源与宿主
+ * 「设置 → Jenkins 配置」分区页、插件弹框「配置」tab 顶部的开关同一个，
+ * 改一处即刻生效，无需刷新页面。
+ *
  * 按钮右侧任务状态小胶囊（数据来自全局轮询器每次扫描的汇总）+ 更新提示胶囊：
  * - 橙色：构建中（含排队）任务数，无进行中任务时不显示；
  * - 绿色：构建成功但尚未在「历史」tab 查看过的条数，打开历史后自动消失；
@@ -12,8 +17,9 @@
  *   等宽、撑满按钮高度的透明点击热区（视觉仍是小胶囊），点击打开更新确认弹框。
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { t } from '../i18n.ts'
+import { showInMenuStore } from '../prefs.ts'
 import type { Poller, TaskSummary } from '../poller.ts'
 import type { UpdateInfo } from '../store.ts'
 import { JENKINS_LOGO } from '../logo.ts'
@@ -36,24 +42,34 @@ export interface FooterButtonProps {
 const EMPTY_SUMMARY: TaskSummary = { building: 0, successUnread: 0 }
 
 export function FooterButton({ onOpen, reportSession, wide = false, useSessions, poller, useUpdate, onUpdateRequest }: FooterButtonProps) {
+  // 「在菜单中显示」偏好：必须在任何提前 return 之前调用（hooks 顺序稳定）。
+  // 第三个参数（getServerSnapshot）供 SSR / 静态渲染测试使用；浏览器行为不变。
+  const visible = useSyncExternalStore(
+    showInMenuStore.subscribe,
+    showInMenuStore.getSnapshot,
+    showInMenuStore.getSnapshot,
+  )
   const currentSessionId = useSessions
     ? (useSessions((s) => s && s.current) as string | undefined)
     : null
+  // 会话 id 上报与入口显隐无关：轮询器 / 历史读取都依赖它。
   if (reportSession && currentSessionId) reportSession(currentSessionId)
   // 任务数量汇总：订阅轮询器，每次扫描后刷新（发布提交 / 构建完成 / 打开历史清除未读均会触发）
   const [summary, setSummary] = useState<TaskSummary>(EMPTY_SUMMARY)
   useEffect(() => {
-    if (!poller) return
+    if (!poller || !visible) return
     const update = (): void => { setSummary(poller.getSummary()) }
     update()
     return poller.subscribe(update)
-  }, [poller])
+  }, [poller, visible])
   // 会话切换（或首次挂载）时唤醒一次扫描，保证汇总跟随当前会话的数据
   useEffect(() => {
     if (poller && currentSessionId) poller.refresh()
   }, [poller, currentSessionId])
   // 新版本检查结果：订阅更新 store（宿主 updateCheck op，实时查询）
   const update = useUpdate ? useUpdate() : null
+  // 关闭「在菜单中显示」后不渲染任何内容（放在所有 hooks 之后，顺序稳定）。
+  if (!visible) return null
   const showBuilding = summary.building > 0
   const showDone = summary.successUnread > 0
   const showUpdate = !!(update && update.hasUpdate && update.latest !== '')
