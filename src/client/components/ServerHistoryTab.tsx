@@ -122,7 +122,8 @@ export function ServerHistoryTab({ run, sessionId, poller }: ServerHistoryTabPro
       if (r && r.ok) {
         setJobs(((r.jobs as JobItem[]) || []).filter((j) => !j.folder))
       } else {
-        setJobsError((r && (r.error as string)) || t('jobsFailed'))
+        // 失败原因按宿主返回的 code 本地化；宿主已把该请求写入 $DSH_HOME/dsh-jenkins.log。
+        setJobsError(tErr(r, t('jobsFailed')))
       }
     }).catch(() => { if (alive) { setJobsLoading(false); setJobsError(t('jobsFailed')) } })
     return () => { alive = false }

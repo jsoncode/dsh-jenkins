@@ -188,6 +188,7 @@ pnpm run check         # whole-tree TypeScript type check (tsc -b)
 pnpm run build         # rebuild both halves after editing source (tsc -b && tsdown)
 pnpm run watch         # tsdown watch mode (rebuild on src/client changes)
 pnpm run verify        # simulate the host seed table to check lib/client.js loads
+pnpm run test          # isolated tests: curl -D dump parsing (incl. proxy CONNECT block) + failure log
 ```
 
 - Host half lives in `src/host/`; browser half in `src/client/` (build entry
@@ -199,13 +200,59 @@ pnpm run verify        # simulate the host seed table to check lib/client.js loa
   `@deepseek-ai/dsh-client-ui-primitives`, ...) stay external and resolve from
   the host module table (seed) at runtime.
 
+## Troubleshooting (failure log)
+
+Every failed request (job list / job detail / build history / trigger / status / build log /
+connection test …) is appended to **`$DSH_HOME/dsh-jenkins.log`** (same directory as
+`dsh-jenkins.json`; on Windows `C:\Users\<you>\.dsh\dsh-jenkins.log`) as JSONL — one line per
+failure:
+
+```json
+{"time":"2026-09-14T07:02:19.949Z","level":"error","op":"jobs","code":"http-401",
+ "message":"auth failed (HTTP 401)","server":"UAT <https://jenkins.example.com>","user":"jason",
+ "request":"GET /api/json?tree=jobs[...]","httpStatus":401,"httpStatuses":[200,401],
+ "curlExit":0,"curlStderr":"","bodySnippet":"<html>...Error 401 Unauthorized...</html>"}
+```
+
+- Fields: op, error code, message, server (name + URL), request line, HTTP status, **all response
+  block statuses**, curl exit code and stderr, response body snippet, session id;
+- `httpStatuses` like `[200, 401]` means curl went through an HTTP proxy: the proxy's CONNECT
+  tunnel block (`200 Connection Established`) is printed first, then the real response block —
+  the last entry is the real status;
+- Redaction: no token, no Basic credentials, no credentials embedded in a URL, no Jenkins crumb;
+  body snippets are flattened and capped at 600 characters;
+- The file rotates to `dsh-jenkins.log.1` above 2MB (one generation kept); logging never breaks
+  the main flow.
+
+### Common causes of "Failed to load jobs"
+
+| Symptom (log field / UI text) | Cause |
+| --- | --- |
+| `code=parse-failed` with a `bodySnippet` starting with `HTTP/1.1` | **HTTPS through an HTTP proxy** (`https_proxy`): curl's `-D -` prints the proxy's `200 Connection Established` tunnel block first; the old code split at the first blank line and swallowed the real headers into the body. Fixed by block-aware parsing (`parseCurlDump`) |
+| `code=auth-failed` (HTTP 401) | Wrong or expired username/Token (re-run Test connection in settings) |
+| `code=forbidden` (HTTP 403) | Token lacks permission / CSRF missing / reverse proxy blocking |
+| `code=network-failed` with `curlExit=7/28/35/60` | DNS, connection refused (7), timeout (28, 40s cap), TLS handshake (35), self-signed cert (60 — enable "ignore certificate") |
+| `code=redirect` | URL is not the final one (`http://` → `https://`, missing context path); redirects are not followed, the log carries `Location` |
+| `code=response-too-large` | Response exceeded the host's 8MB collection cap (tail kept); narrow the request |
+| `code=empty-response` | No response header block: proxy ate the response, connection cut, or output truncated |
+| `code=server-missing` | The client's cached server id no longer exists in the config (pick a server again) |
+| `code=curl-unavailable` | Host subprocess service unavailable / curl cannot start |
+| `stage=route-guard` | Request was rejected by the `/dsh-jenkins/api` trust fence (non-loopback Host, cross-site marker) — it never reached plugin logic |
+| Empty job list but no failure | Folders deeper than the 3-level tree are returned as `folder` placeholders and filtered out by the UI; the instance nests jobs too deeply |
+
 ## Implementation notes
 
-- Jenkins REST via `curl.exe` through the host `shell` service: Basic auth + CSRF crumb
-  + `--data-binary @-` (form body over stdin, UTF-8 without BOM); `-D -` parses status
-  and the `Location` header.
-- Browser ↔ host transport: `ctx.remote.commands.execute(sessionId, '/dsh-jenkins <json>')`,
-  host errors carry a `code` that the client localizes (fallback to the raw message).
+- Jenkins REST via `curl.exe` spawned directly through the host `subprocess` service: Basic auth
+  + CSRF crumb + `--data-binary @-` (form body over stdin, UTF-8 without BOM); the `-D -` output is
+  parsed **per response block** (`parseCurlDump`: skip the proxy CONNECT / 1xx blocks, take the
+  last real block for status and `Location`), so a tunnel block's 200 no longer masks the real status.
+- Failures are logged to `$DSH_HOME/dsh-jenkins.log` (see above): `jenkins.ts` records the HTTP /
+  curl evidence, `index.ts` records op-level failures at all three entry points (route, command,
+  model tool).
+- Browser ↔ host transport: by default the `/dsh-jenkins/api` route registered on `webServer`
+  (fetch POST JSON → `{ ok, value }` envelope, behind a trust fence); older hosts fall back to the
+  command channel `ctx.remote.commands.execute(sessionId, '/dsh-jenkins <json>')`. Host errors carry
+  a `code` that the client localizes (fallback to the raw message).
 - Peer dependencies (`@deepseek-ai/cordis`, `dsh-tools`, `schemastery`, `dsh-settings`,
   `dsh-commands`, `dsh-session`, `dsh-api-remotes`, client runtime/ui-slots/ui-settings/
   cordis-client-runner, `react`) are resolved by the host at install time.

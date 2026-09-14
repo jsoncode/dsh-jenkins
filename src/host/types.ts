@@ -27,6 +27,8 @@ export interface PublicServer {
 
 /** 发起 Jenkins 请求所需的最小服务器视图（未持久化的测试连接也适用）。 */
 export interface JenkinsServerLike {
+  /** 服务器显示名（仅用于失败日志；未持久化的测试连接可能没有）。 */
+  name?: string
   baseUrl: string
   username: string
   token: string
@@ -59,12 +61,26 @@ export interface CurlResult {
   exitCode: number | null
   stdout: string
   stderr: string
+  /** stdout 超出宿主收集上限（只保留尾部）：响应头块会丢失。 */
+  stdoutTruncated?: boolean
 }
 
 export interface HttpResponse {
   status: number
   headers: string
   body: string
+  /** 全部响应块状态码（含代理 CONNECT 隧道块 / 1xx），按出现顺序。 */
+  statuses?: number[]
+  /** curl 退出码（0 = 成功）。 */
+  exitCode?: number | null
+  /** curl stderr（失败诊断）。 */
+  stderr?: string
+  /** 请求路径（失败日志用，不含凭据）。 */
+  path?: string
+  /** 请求方法。 */
+  method?: string
+  /** 响应超出宿主收集上限被截断（只保留尾部）。 */
+  truncated?: boolean
 }
 
 /** 工作区 dsh-jenkins.{json,js,ts} 配置：数组，每个元素一个发布目标。 */
@@ -86,6 +102,8 @@ export interface JenkinsRequestOptions {
   form?: Record<string, string | number | boolean> | null
   headers?: Record<string, string>
   stdin?: string
+  /** 逻辑操作名（仅用于失败日志，如 jobs / jobDetail / trigger）。 */
+  op?: string
 }
 
 /** 宿主 shell 服务最小视图。 */
@@ -104,8 +122,8 @@ export interface SubprocessService {
   spawn(opts: Record<string, unknown>): Promise<{
     done: Promise<{ exitCode: number | null }>
     collected?: {
-      stdout?: { readFrom(offset: number): { text: string } }
-      stderr?: { readFrom(offset: number): { text: string } }
+      stdout?: { readFrom(offset: number): { text: string; lossy?: boolean; truncated?: boolean } }
+      stderr?: { readFrom(offset: number): { text: string; lossy?: boolean; truncated?: boolean } }
     }
   }>
 }

@@ -8,6 +8,7 @@
 
 import type { HostCtxLike } from './jenkins.ts'
 import {
+  errorCodeOf,
   extractParams,
   getCrumb,
   headerValue,
@@ -53,19 +54,7 @@ const publicServer = (s: ServerConfig): PublicServer => ({
 })
 
 /** 把异常/消息映射为本地化错误码（客户端按 code 显示中/英文）。 */
-function errCodeOf(e: unknown): string | undefined {
-  const err = e as { status?: number; message?: string } | null
-  if (err && err.status === 401) return 'auth-failed'
-  if (err && err.status === 403) return 'forbidden'
-  if (err && err.status === 404) return 'not-found'
-  const msg = (err && err.message) || String(e)
-  if (msg.indexOf('网络请求失败') !== -1) return 'network-failed'
-  if (msg.indexOf('无法解析任务路径') !== -1) return 'job-path-invalid'
-  if (msg.indexOf('缺少队列 ID') !== -1) return 'queue-id-missing'
-  if (msg.indexOf('缺少工作区路径') !== -1) return 'cwd-missing'
-  if (msg.indexOf('响应解析失败') !== -1) return 'parse-failed'
-  return undefined
-}
+export const errCodeOf = errorCodeOf
 
 export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
   // 等待数据文件初始化完成（首次加载或旧数据迁移），避免操作读到空镜像。
@@ -288,7 +277,7 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
     }
     let r: HttpResponse
     try {
-      r = await jenkinsRequest(ctx, server, '/api/json')
+      r = await jenkinsRequest(ctx, server, '/api/json', { op: 'test' })
     } catch (e) {
       await persistVerified(false)
       return { ok: false, code: errCodeOf(e) || 'network-failed', error: e instanceof Error ? e.message : String(e) }
@@ -299,14 +288,34 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
     let data: { version?: string; nodeName?: string } | null = null
     try { data = JSON.parse(r.body || '{}') } catch { /* ignore */ }
     await persistVerified(true)
-    return { ok: true, version: data && data.version ? data.version : '', nodeName: data && data.nodeName ? data.nodeName : '' }
+    // 版本号来自响应头 X-Jenkins（root api/json 正文里没有 version 字段）：
+    // 头块解析修正后这里才拿得到真实版本。
+    const version = (data && data.version) || headerValue(r.headers, 'X-Jenkins') || ''
+    return { ok: true, version, nodeName: data && data.nodeName ? data.nodeName : '' }
   }
 
   if (op === 'jobs') {
     const s = findServer(String(req.serverId || ''))
     if (!s) return { ok: false, code: 'server-missing', error: 'Server not found; configure it in settings first' }
+    // 三层 tree：顶层 + 两层文件夹；文件夹内的 Job 最多展开到第 3 层，更深的
+    // 文件夹以 folder 占位返回（客户端会过滤，不会误当作可构建 Job）。
     const tree = 'jobs[name,color,url,buildable,jobs[name,color,url,buildable,jobs[name,color,url,buildable]]]'
-    const data = await jenkinsJson(ctx, s, '/api/json?tree=' + encodeURIComponent(tree)) as { jobs?: Array<Record<string, unknown>> }
+    let data: { jobs?: Array<Record<string, unknown>> } | null
+    try {
+      data = await jenkinsJson(ctx, s, '/api/json?tree=' + encodeURIComponent(tree), { op: 'jobs' }) as { jobs?: Array<Record<string, unknown>> } | null
+    } catch (e) {
+      // 认证 / 权限 / 网络 / 重定向 / 解析失败等原因由 jenkins.ts 落日志；
+      // 这里统一转成 { ok:false, code } 返回（避免抛异常让调用方拿到无 code 的报错）。
+      return { ok: false, code: errCodeOf(e), error: e instanceof Error ? e.message : String(e) }
+    }
+    // 空响应（重定向后无正文 / 200 空体 / 响应头被收集上限截断）时不能直接取 data.jobs，
+    // 否则会抛 TypeError，变成一个无法解读的报错。此处给出明确原因。
+    if (data === null || typeof data !== 'object') {
+      return { ok: false, code: 'empty-response', error: 'Jenkins 返回空响应，无法读取 Job 列表（请检查服务器地址、重定向与代理设置）' }
+    }
+    if (data.jobs !== undefined && !Array.isArray(data.jobs)) {
+      return { ok: false, code: 'parse-failed', error: '响应格式异常：jobs 字段不是数组（代理 / 登录页可能返回了非 Jenkins 内容）' }
+    }
     const jobs: Array<Record<string, unknown>> = []
     const walk = (list: Array<Record<string, unknown>> | undefined, prefix: string[], depth: number): void => {
       for (const j of list || []) {
@@ -330,7 +339,7 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
     if (!s) return { ok: false, code: 'server-missing', error: 'Server not found' }
     const segs = jobSegments(String(req.jobUrl || ''))
     if (segs.length === 0) return { ok: false, code: 'job-path-invalid', error: 'Unable to parse job path' }
-    const data = await jenkinsJson(ctx, s, jobPath(segs) + '/api/json') as {
+    const data = await jenkinsJson(ctx, s, jobPath(segs) + '/api/json', { op: 'jobDetail' }) as {
       name?: string
       buildable?: boolean
       color?: string
@@ -361,7 +370,7 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
     if (segs.length === 0) return { ok: false, code: 'job-path-invalid', error: 'Unable to parse job path' }
     // 深度 tree 一次取全字段（避免每条构建一次请求）：编号 / 时间 / 结果 / 是否构建中 / 耗时 / 地址 / 描述 / 显示名。
     const tree = 'builds[number,timestamp,result,building,duration,url,description,displayName]'
-    const data = await jenkinsJson(ctx, s, jobPath(segs) + '/api/json?tree=' + encodeURIComponent(tree)) as {
+    const data = await jenkinsJson(ctx, s, jobPath(segs) + '/api/json?tree=' + encodeURIComponent(tree), { op: 'jobHistory' }) as {
       builds?: Array<Record<string, unknown>>
     }
     const builds = (data.builds || []).map((b) => ({
@@ -384,11 +393,11 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
     if (segs.length === 0) return { ok: false, code: 'job-path-invalid', error: 'Unable to parse job path' }
     const params = req.parameters && typeof req.parameters === 'object' ? (req.parameters as Record<string, string | number | boolean>) : {}
     const hasParams = Object.keys(params).length > 0
-    const crumb = await getCrumb(ctx, s)
+    const crumb = await getCrumb(ctx, s, 'trigger')
     const headers: Record<string, string> = {}
     if (crumb) headers[crumb.field] = crumb.value
     const path = jobPath(segs) + (hasParams ? '/buildWithParameters' : '/build')
-    const res = await jenkinsRequest(ctx, s, path, { method: 'POST', form: hasParams ? params : null, headers })
+    const res = await jenkinsRequest(ctx, s, path, { method: 'POST', form: hasParams ? params : null, headers, op: 'trigger' })
     if (res.status >= 300 && res.status < 400) {
       return { ok: false, code: 'redirect', error: 'Server returned a redirect (HTTP ' + res.status + '); check that the URL is the final one (e.g. https://…)' }
     }
@@ -406,7 +415,7 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
     if (!s) return { ok: false, code: 'server-missing', error: 'Server not found' }
     const id = Number(req.queueId)
     if (!id) return { ok: false, code: 'queue-id-missing', error: 'Missing queue ID' }
-    const data = await jenkinsJson(ctx, s, '/queue/item/' + id + '/api/json') as {
+    const data = await jenkinsJson(ctx, s, '/queue/item/' + id + '/api/json', { op: 'queueStatus' }) as {
       executable?: { number?: number; url?: string }
       cancelled?: boolean
       blocked?: boolean
@@ -426,7 +435,7 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
     const num = Number(req.buildNumber)
     const path = jobPath(segs) + (num ? '/' + num : '/lastBuild') + '/api/json'
     try {
-      const data = await jenkinsJson(ctx, s, path) as {
+      const data = await jenkinsJson(ctx, s, path, { op: 'buildStatus' }) as {
         number?: number
         building?: boolean
         result?: string | null
@@ -462,7 +471,7 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
     const num = Number(req.buildNumber)
     if (!num) return { ok: false, code: 'build-not-found', error: 'Missing build number' }
     const path = jobPath(segs) + '/' + num + '/consoleText'
-    const res = await jenkinsRequest(ctx, s, path)
+    const res = await jenkinsRequest(ctx, s, path, { op: 'buildLog' })
     if (res.status === 404) return { ok: false, code: 'build-not-found', error: 'No build log found yet', notFound: true }
     if (res.status >= 400) return { ok: false, code: 'log-failed', status: res.status, error: 'Failed to fetch build log (HTTP ' + res.status + ')' }
     // consoleText 可能极大：截取末尾（最新内容）并标记已截断
@@ -475,7 +484,7 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
   if (op === 'cancel') {
     const s = findServer(String(req.serverId || ''))
     if (!s) return { ok: false, code: 'server-missing', error: 'Server not found' }
-    const crumb = await getCrumb(ctx, s)
+    const crumb = await getCrumb(ctx, s, 'cancel')
     const headers: Record<string, string> = {}
     if (crumb) headers[crumb.field] = crumb.value
     // 已开始（有构建号）：停掉构建；仍在排队：取消队列项（构建一旦开始队列项即消失，优先按构建号处理）
@@ -483,7 +492,7 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
     if (num) {
       const segs = Array.isArray(req.segments) && (req.segments as unknown[]).length ? (req.segments as string[]) : jobSegments(String(req.jobUrl || ''))
       if (segs.length === 0) return { ok: false, code: 'job-path-invalid', error: 'Unable to parse job path' }
-      const res = await jenkinsRequest(ctx, s, jobPath(segs) + '/' + num + '/stop', { method: 'POST', headers })
+      const res = await jenkinsRequest(ctx, s, jobPath(segs) + '/' + num + '/stop', { method: 'POST', headers, op: 'cancel' })
       if (res.status >= 400) {
         return { ok: false, code: 'cancel-failed', status: res.status, error: 'Failed to stop build (HTTP ' + res.status + ')' }
       }
@@ -491,7 +500,7 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
     }
     const queueId = Number(req.queueId)
     if (queueId) {
-      const res = await jenkinsRequest(ctx, s, '/queue/cancelItem?id=' + queueId, { method: 'POST', headers })
+      const res = await jenkinsRequest(ctx, s, '/queue/cancelItem?id=' + queueId, { method: 'POST', headers, op: 'cancel' })
       if (res.status >= 400) {
         return { ok: false, code: 'cancel-failed', status: res.status, error: 'Failed to cancel queued build (HTTP ' + res.status + ')' }
       }

@@ -169,6 +169,7 @@ pnpm run check         # 全仓 TypeScript 类型检查（tsc -b）
 pnpm run build         # 修改源码后重建两半产物（tsc -b && tsdown）
 pnpm run watch         # tsdown 监听模式（改 src/client 自动重建）
 pnpm run verify        # 模拟宿主 seed 表校验 lib/client.js 可加载
+pnpm run test          # 隔离测试：curl -D 输出解析（含代理 CONNECT 隧道块）+ 失败日志
 ```
 
 - 宿主半边源码在 `src/host/`，浏览器半边在 `src/client/`（构建入口
@@ -178,11 +179,52 @@ pnpm run verify        # 模拟宿主 seed 表校验 lib/client.js 可加载
 - 构建产物外部依赖（`react`、`@deepseek-ai/dsh-client-ui-primitives` 等）保持
   external，运行时解析自宿主模块表（seed）。
 
+## 失败排查（日志）
+
+任何一次失败的请求（Job 列表 / 任务详情 / 构建历史 / 触发 / 状态查询 / 构建日志 / 连接测试…）
+都会写入 **`$DSH_HOME/dsh-jenkins.log`**（与 `dsh-jenkins.json` 同目录，Windows 默认
+`C:\Users\<用户>\.dsh\dsh-jenkins.log`），格式为 JSONL —— 一行一条失败记录：
+
+```json
+{"time":"2026-09-14T07:02:19.949Z","level":"error","op":"jobs","code":"http-401",
+ "message":"认证失败（HTTP 401）：用户名或 Token 不正确","server":"腾讯云UAT <https://jenkins.example.com>",
+ "user":"jason","request":"GET /api/json?tree=jobs[...]","httpStatus":401,"httpStatuses":[200,401],
+ "curlExit":0,"curlStderr":"","bodySnippet":"<html>...Error 401 Unauthorized...</html>"}
+```
+
+- 记录内容：op、错误码、消息、服务器（名称 + 地址）、请求行、HTTP 状态码、**全部响应块状态码**、
+  curl 退出码与 stderr、响应体片段、会话 id；
+- `httpStatuses` 形如 `[200, 401]` = 走了 HTTP 代理时先打印代理 CONNECT 隧道块的 200，
+  再是真实响应块的状态 —— 真实状态以最后一个为准；
+- 脱敏：不记录 Token / Basic 凭据 / URL 内嵌凭据 / Jenkins crumb；正文片段截断到 600 字符；
+- 单文件超过 2MB 自动轮转为 `dsh-jenkins.log.1`（只保留一份历史）；写日志失败不影响主流程。
+
+### 「加载 Job 列表失败」的常见原因
+
+| 现象（日志 field / 客户端文案） | 原因 |
+| --- | --- |
+| `code=parse-failed`，`bodySnippet` 以 `HTTP/1.1` 开头 | **HTTPS 经 HTTP 代理**（`https_proxy`）时 curl 的 `-D -` 会先输出代理 `200 Connection Established` 隧道块；旧实现按第一个空行切分，把真实响应头当成正文。已在 `parseCurlDump` 中按块解析修复 |
+| `code=auth-failed`（HTTP 401） | 用户名 / Token 不正确或已失效（重新在设置里测试连接） |
+| `code=forbidden`（HTTP 403） | Token 权限不足 / CSRF 缺失 / 反代拦截 |
+| `code=network-failed`，`curlExit=7/28/35/60` | DNS、连接被拒（7）、超时（28，请求上限 40s）、TLS 握手（35）、自签名证书（60，勾选「忽略证书」或改用 `-k`） |
+| `code=redirect` | 地址不是最终地址（如 `http://` 需要跳 `https://`、少了上下文路径）；未跟随重定向，日志里有 `Location` |
+| `code=response-too-large` | 响应超过宿主 8MB 收集上限（只保留尾部），大实例请缩小请求范围 |
+| `code=empty-response` | 未取到 HTTP 响应头：代理吞响应 / 连接被中断 / 响应被截断 |
+| `code=server-missing` | 客户端缓存的服务器 id 在配置中已不存在（重新选择服务器） |
+| `code=curl-unavailable` | 宿主 subprocess 服务不可用 / curl 无法启动 |
+| `stage=route-guard` | 请求未通过 `/dsh-jenkins/api` 信任围栏（非回环 Host、跨站标记）——此时请求根本没到插件逻辑 |
+| Job 列表为空但不是失败 | 三层 tree 之外的深层文件夹会以 `folder` 占位返回并被前端过滤；该实例的 Job 层级过深 |
+
 ## 实现说明
 
-- Jenkins REST：`curl.exe`（经宿主 `shell` 服务），Basic 认证 + CSRF crumb +
-  `--data-binary @-`（表单体经 stdin，UTF-8 无 BOM）；`-D -` 解析状态码与 `Location`。
-- 浏览器↔宿主：`ctx.remote.commands.execute(sessionId, '/dsh-jenkins <json>')`，
+- Jenkins REST：`curl.exe`（经宿主 `subprocess` 服务直接 spawn），Basic 认证 + CSRF crumb +
+  `--data-binary @-`（表单体经 stdin，UTF-8 无 BOM）；`-D -` 输出按**响应块**解析
+  （`parseCurlDump`：跳过代理 CONNECT / 1xx 中间块，取最后一个真实块的状态码与
+  `Location`），真实状态码不会再被隧道块的 200 掩盖。
+- 失败请求统一落 `$DSH_HOME/dsh-jenkins.log`（见上节）：`jenkins.ts` 记录 HTTP / curl 层证据，
+  `index.ts` 在路由（route）、命令（command）、模型工具（tool）三个入口记录 op 级失败。
+- 浏览器↔宿主：默认走 `webServer` 注册的 `/dsh-jenkins/api`（fetch POST JSON → `{ ok, value }`
+  信封，带信任围栏）；老宿主自动回退命令通道 `ctx.remote.commands.execute(sessionId, '/dsh-jenkins <json>')`。
   宿主错误带 `code`，客户端按语言本地化（未覆盖的兜底显示原文）。
 - peerDependencies（`@deepseek-ai/cordis`、`dsh-tools`、`schemastery`、`dsh-settings`、
   `dsh-commands`、`dsh-session`、`dsh-api-remotes`、client-runtime/ui-slots/ui-settings/

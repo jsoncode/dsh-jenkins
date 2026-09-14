@@ -25,7 +25,8 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { Context } from '@deepseek-ai/cordis'
 import { isTrustedApiRequest } from './fence.ts'
-import { runOp } from './ops.ts'
+import { logFailure, logFilePath } from './log.ts'
+import { errCodeOf, runOp } from './ops.ts'
 import type { OpRequest, OpResult, ServerConfig } from './types.ts'
 import { EMPTY_STORE, loadStore, resolveStoreDir, saveStore } from './store.ts'
 import type { JenkinsStore } from './store.ts'
@@ -112,6 +113,9 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
   const storeDir = resolveStoreDir(settings?.documentPath)
   const mirror: JenkinsStore = EMPTY_STORE()
   let storeReady: Promise<void> = Promise.resolve()
+
+  // 失败请求日志位置（与数据文件同目录）：排查「加载 Job 列表失败」等问题的入口。
+  console.log('[dsh-jenkins] failure log:', logFilePath())
 
   // 旧版 settings 命名空间：必须在 apply 同步段注册（register 用 ctx.effect
   // 延迟登记，异步段注册后立刻 scope.update() 会因 effect 未 flush 而抛
@@ -228,6 +232,15 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
       path: '/dsh-jenkins/api',
       handler: async (req, res) => {
         if (!fence(req.headers)) {
+          // 围栏拒绝（Host 非回环且不在受信任主机内 / 跨站标记）：浏览器侧会看到
+          // 「加载失败」但请求根本没到 runOp，这里单独留痕，避免出现无法解释的空日志。
+          logFailure({
+            stage: 'route-guard',
+            code: 'forbidden',
+            message: '请求未通过 /dsh-jenkins/api 信任围栏（Host 非回环 / 未在受信任主机内 / 跨站）',
+            request: req.method + ' /dsh-jenkins/api',
+            note: 'host=' + String(req.headers.host || '') + ' origin=' + String(req.headers.origin || '') + ' sec-fetch-site=' + String(req.headers['sec-fetch-site'] || ''),
+          })
           writeApiJson(res, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } })
           return
         }
@@ -242,6 +255,7 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
           const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
           total += buffer.length
           if (total > API_BODY_LIMIT) {
+            logFailure({ stage: 'route-guard', code: 'body-too-large', message: '请求体超过 1MB 上限', request: 'POST /dsh-jenkins/api' })
             writeApiJson(res, 413, { ok: false, error: { code: 'body-too-large', message: 'request body too large' } })
             return
           }
@@ -253,18 +267,40 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
           try {
             request = JSON.parse(text) as OpRequest
           } catch {
+            logFailure({ stage: 'route-guard', code: 'params-invalid', message: '请求体不是合法 JSON', request: 'POST /dsh-jenkins/api', bodySnippet: text })
             writeApiJson(res, 400, { ok: false, error: { code: 'params-invalid', message: 'Parameters must be JSON' } })
             return
           }
         }
         try {
           const payload = await runOp(deps, request)
+          // 失败一律落日志：这是「加载失败」类问题的唯一留痕点（含各分支的提前返回）。
+          if (payload === null || payload === undefined || payload.ok !== true) {
+            logFailure({
+              stage: 'route',
+              op: String(request.op || ''),
+              code: payload && payload.code ? String(payload.code) : 'unknown',
+              message: payload && payload.error ? String(payload.error) : 'operation failed',
+              sessionId: typeof request.sessionId === 'string' ? request.sessionId : undefined,
+              request: 'POST /dsh-jenkins/api',
+            })
+          }
           writeApiJson(res, 200, { ok: true, value: payload })
         } catch (e) {
           // runOp 内部已兜底大部分分支；此处防御性映射为与命令 handler 相同的错误载荷。
+          const code = errCodeOf(e)
+          logFailure({
+            stage: 'route',
+            op: String(request.op || ''),
+            code,
+            message: e instanceof Error ? e.message : String(e),
+            sessionId: typeof request.sessionId === 'string' ? request.sessionId : undefined,
+            request: 'POST /dsh-jenkins/api',
+            note: 'uncaught from runOp',
+          })
           writeApiJson(res, 200, {
             ok: true,
-            value: { ok: false, code: errCodeOfLocal(e), error: e instanceof Error ? e.message : String(e) },
+            value: { ok: false, code, error: e instanceof Error ? e.message : String(e) },
           })
         }
       },
@@ -332,9 +368,25 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
         }
         try {
           const payload = await runOp(deps, req)
+          if (payload === null || payload === undefined || payload.ok !== true) {
+            logFailure({
+              stage: 'command',
+              op: String(req.op || ''),
+              code: payload && payload.code ? String(payload.code) : 'unknown',
+              message: payload && payload.error ? String(payload.error) : 'operation failed',
+            })
+          }
           return { kind: 'success', text: JSON.stringify(payload) }
         } catch (e) {
-          return { kind: 'error', text: JSON.stringify({ ok: false, code: errCodeOfLocal(e), error: e instanceof Error ? e.message : String(e) }) }
+          const code = errCodeOf(e)
+          logFailure({
+            stage: 'command',
+            op: String(req.op || ''),
+            code,
+            message: e instanceof Error ? e.message : String(e),
+            note: 'uncaught from runOp',
+          })
+          return { kind: 'error', text: JSON.stringify({ ok: false, code, error: e instanceof Error ? e.message : String(e) }) }
         }
       },
     })
@@ -363,7 +415,16 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
           + ' / Server "' + args.server + '" not found. Configured: ' + (names || '(none)')
       }
       const result = await runOp(deps, { op: 'trigger', serverId: server.id, segments: args.job.split('/').filter(Boolean), parameters: args.parameters || {} })
-      if (!result.ok) return '触发失败：' + result.error + ' / Trigger failed: ' + result.error
+      if (!result.ok) {
+        logFailure({
+          stage: 'tool',
+          op: 'trigger',
+          code: result.code ? String(result.code) : 'unknown',
+          message: result.error ? String(result.error) : 'trigger failed',
+          note: 'dsh_jenkins_build job=' + args.job,
+        })
+        return '触发失败：' + result.error + ' / Trigger failed: ' + result.error
+      }
       return result.queueId
         ? `已触发构建：${args.job}（服务器 ${server.name}），队列 #${result.queueId}。可用 dsh_jenkins_status 查询状态。`
           + ` / Build triggered: ${args.job} (server ${server.name}), queue #${result.queueId}. Use dsh_jenkins_status to check status.`
@@ -400,6 +461,13 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
       })
       if (!result.ok) {
         if (result.notFound) return `任务 ${args.job} 尚未有构建记录 / Job ${args.job} has no build record yet`
+        logFailure({
+          stage: 'tool',
+          op: 'buildStatus',
+          code: result.code ? String(result.code) : 'unknown',
+          message: result.error ? String(result.error) : 'status query failed',
+          note: 'dsh_jenkins_status job=' + args.job,
+        })
         return '查询失败：' + result.error + ' / Query failed: ' + result.error
       }
       const dur = Math.round((Number(result.duration) || 0) / 1000)
@@ -409,21 +477,6 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
         + ` (elapsed ${dur}s)\n${result.url || ''}`
     },
   }) as never)
-}
-
-/** 命令 handler 内的本地化错误码（runOp 抛出的异常同样映射）。 */
-function errCodeOfLocal(e: unknown): string | undefined {
-  const err = e as { status?: number; message?: string } | null
-  if (err && err.status === 401) return 'auth-failed'
-  if (err && err.status === 403) return 'forbidden'
-  if (err && err.status === 404) return 'not-found'
-  const msg = (err && err.message) || String(e)
-  if (msg.indexOf('网络请求失败') !== -1) return 'network-failed'
-  if (msg.indexOf('无法解析任务路径') !== -1) return 'job-path-invalid'
-  if (msg.indexOf('缺少队列 ID') !== -1) return 'queue-id-missing'
-  if (msg.indexOf('缺少工作区路径') !== -1) return 'cwd-missing'
-  if (msg.indexOf('响应解析失败') !== -1) return 'parse-failed'
-  return undefined
 }
 
 export type { OpRequest, OpResult, ServerConfig }

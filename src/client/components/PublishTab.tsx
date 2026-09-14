@@ -304,7 +304,9 @@ function LauncherContent({ cwd, configCwd, sessionId, config, run, poller, stora
         setSelectedJobPath(preferred ? preferred.path : '')
         setJobSearch(preferred ? preferred.path : '')
       } else {
-        setJobsError((r && (r.error as string)) || t('jobsFailed'))
+        // 失败原因按宿主返回的 code 本地化（未知 code 回退原文）；宿主已把该请求写入
+        // $DSH_HOME/dsh-jenkins.log，便于事后排查。
+        setJobsError(tErr(r, t('jobsFailed')))
       }
     }).catch((e) => { if (alive) { setJobsLoading(false); setJobsError(e instanceof Error ? e.message : String(e)) } })
     return () => { alive = false }

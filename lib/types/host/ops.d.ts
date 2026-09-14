@@ -6,6 +6,7 @@
  * updateCheck / pluginUpdateStart / pluginUpdateStatus。
  */
 import type { HostCtxLike } from './jenkins.ts';
+import { errorCodeOf } from './jenkins.ts';
 import type { OpRequest, OpResult, ServerConfig } from './types.ts';
 export interface OpsDeps {
     ctx: HostCtxLike;
@@ -19,5 +20,7 @@ export interface OpsDeps {
     /** 数据文件初始化（加载/迁移）完成信号；runOp 开头等待，避免读到空镜像。 */
     storeReady?: Promise<void>;
 }
+/** 把异常/消息映射为本地化错误码（客户端按 code 显示中/英文）。 */
+export declare const errCodeOf: typeof errorCodeOf;
 export declare function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult>;
 //# sourceMappingURL=ops.d.ts.map
