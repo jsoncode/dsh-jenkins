@@ -2,7 +2,9 @@
  * dsh-jenkins —— Jenkins CLI 插件 · 宿主半边（可发布组合包，无硬编码路径）
  *
  * - 插件数据（服务器列表 + 浏览器缓存）持久化到 $DSH_HOME/dsh-jenkins.json
- *   （服务器 Token 以 dsh-jenkins.key 机器绑定密钥 AES-256-GCM 加密；缓存明文）。
+ *   （服务器 Token 以 dsh-jenkins.key 机器绑定密钥 AES-256-GCM 加密；缓存明文）；
+ *   集中式项目配置是独立文件 $DSH_HOME/dsh-jenkins-map.json（项目名 → 发布目标数组），
+ *   各工作区根目录的 dsh-jenkins.{json,js,ts} 作为「发现式配置」自动合并进去。
  *   settings 命名空间仅用于一次性迁移旧版数据：首次运行时若发现 settings.yaml
  *   中的 dsh-jenkins 命名空间有数据，自动提取到数据文件并清空旧命名空间，
  *   之后不再读写宿主默认设置；
@@ -26,10 +28,13 @@ import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { Context } from '@deepseek-ai/cordis'
 import { isTrustedApiRequest } from './fence.ts'
 import { logFailure, logFilePath } from './log.ts'
+import { serverHost } from './jenkins.ts'
 import { errCodeOf, runOp } from './ops.ts'
-import type { OpRequest, OpResult, ServerConfig } from './types.ts'
+import type { OpRequest, OpResult, ProjectConfigMap, ServerConfig } from './types.ts'
 import { EMPTY_STORE, loadStore, resolveStoreDir, saveStore } from './store.ts'
 import type { JenkinsStore } from './store.ts'
+import { loadProjectMap, mapFilePath, saveProjectMap } from './project-map.ts'
+import { mergeMissingProjects } from './projects.ts'
 
 export const name = 'dsh-jenkins'
 export const inject = ['shell', 'tools', 'settings', 'commands']
@@ -116,6 +121,7 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
 
   // 失败请求日志位置（与数据文件同目录）：排查「加载 Job 列表失败」等问题的入口。
   console.log('[dsh-jenkins] failure log:', logFilePath())
+  console.log('[dsh-jenkins] project map:', mapFilePath(storeDir))
 
   // 旧版 settings 命名空间：必须在 apply 同步段注册（register 用 ctx.effect
   // 延迟登记，异步段注册后立刻 scope.update() 会因 effect 未 flush 而抛
@@ -172,6 +178,16 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
       if (loaded !== null) {
         mirror.servers = loaded.servers
         mirror.cache = loaded.cache
+        // 一次性迁移：旧版把项目配置写在数据文件的 projects 字段里 →
+        // 迁到独立的 dsh-jenkins-map.json（只补缺失，不覆盖已有项目）。
+        const legacyProjects = loaded.legacyProjects
+        if (legacyProjects && Object.keys(legacyProjects).length > 0) {
+          const current = await loadProjectMap(storeDir)
+          const merged = mergeMissingProjects(current, legacyProjects)
+          await saveProjectMap(storeDir, merged.map)
+          await saveStore(storeDir, mirror) // sealStore 不再写 projects，遗留字段随之清除
+          console.log(`[dsh-jenkins] migrated ${Object.keys(legacyProjects).length} legacy project(s) → ${mapFilePath(storeDir)}`)
+        }
       } else {
         // 数据文件不存在：尝试从旧 settings 一次性迁移；旧数据为空时保持空
         // store（首次保存时创建文件）。
@@ -204,16 +220,27 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
     mirror.cache = cache
     await saveStore(storeDir, mirror)
   }
+  // 集中式项目配置：独立文件 $DSH_HOME/dsh-jenkins-map.json（项目名 → 发布目标数组）。
+  // 每次读写都落盘解析（文件小），保持「文件即真相」——手改文件后即刻生效。
+  const mapPath = (): string => mapFilePath(storeDir)
+  const readMap = (): Promise<ProjectConfigMap> => loadProjectMap(storeDir)
+  const writeMap = (map: ProjectConfigMap): Promise<void> => saveProjectMap(storeDir, map)
 
-  // 按名称 / id / baseUrl（去尾部斜杠）匹配，兼容配置里直接写服务器地址的形式。
+  // 按 名称 / id / 完整地址（去尾部斜杠）/ 域名 匹配，兼容配置里直接写服务器地址的形式。
+  // 域名一级是为「配置里写 https://host，插件里配的是 http://host:8080/jenkins」这类同机不同写法准备。
   const normUrl = (u: string): string => String(u || '').trim().replace(/\/+$/, '')
   const findServer = (nameOrIdOrUrl: string): ServerConfig | undefined => {
-    const ref = normUrl(nameOrIdOrUrl)
+    const ref = String(nameOrIdOrUrl || '').trim()
+    if (ref === '') return undefined
     const all = readServers()
-    return all.find((s) => s.name === nameOrIdOrUrl || s.id === nameOrIdOrUrl || normUrl(s.baseUrl) === ref)
+    const exact = all.find((s) => s.name === ref || s.id === ref || normUrl(s.baseUrl) === normUrl(ref))
+    if (exact !== undefined) return exact
+    const host = serverHost(ref)
+    if (host === '') return undefined
+    return all.find((s) => serverHost(s.baseUrl) === host)
   }
 
-  const deps = { ctx, readServers, writeServers, findServer, readCacheJson, writeCacheJson, storeReady }
+  const deps = { ctx, readServers, writeServers, findServer, readMap, writeMap, mapPath, readCacheJson, writeCacheJson, storeReady }
 
   // ─── 浏览器 HTTP API（/dsh-jenkins/api）────────────────────────
   // 浏览器半边（设置页 / 执行弹框 / 后台轮询 / 历史存储）默认经此路由与宿主通信：
@@ -355,7 +382,7 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
     (commands as CommandsService).register({
       name: 'dsh-jenkins',
       description: 'Jenkins CLI：管理服务器配置并触发/查询构建（设置界面/工作区入口调用）。Manage Jenkins servers and trigger/query builds (used by the settings UI and workspace entry). 参数为 JSON：'
-        + '{ "op": "list|save|delete|test|jobs|jobDetail|jobHistory|trigger|queueStatus|buildStatus|buildLog|cancel|updateCheck|pluginUpdateStart|pluginUpdateStatus|cacheGet|cacheSet|workspaceConfig|workspaceTrigger|saveTemplate", ... }。',
+        + '{ "op": "list|save|delete|test|jobs|jobDetail|jobHistory|trigger|queueStatus|buildStatus|buildLog|cancel|updateCheck|pluginUpdateStart|pluginUpdateStatus|cacheGet|cacheSet|mapLoad|mapSave|mapDiscover|workspaceConfig|workspaceTrigger|saveTemplate", ... }。',
       input: { hint: '{"op":"list"}' },
       recordInput: true,
       handler: async (invocation: { rawInput?: string }): Promise<{ kind: 'success' | 'error'; text: string }> => {

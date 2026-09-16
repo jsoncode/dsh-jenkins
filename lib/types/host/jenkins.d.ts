@@ -15,6 +15,11 @@
 import type { HttpResponse, JenkinsParamDef, JenkinsRequestOptions, JenkinsServerLike, ShellService } from './types.ts';
 declare const psQuote: (v: string | number | boolean) => string;
 declare const normalizeBase: (u: string) => string;
+/**
+ * 取地址的**域名**（主机名小写）：忽略协议 / 端口 / 上下文路径 / URL 内嵌凭据。
+ * 与浏览器半边 `client/storage.ts` 的 serverHost 保持一致（同一个匹配语义）。
+ */
+export declare function serverHost(u: string): string;
 /** 从 job URL 中提取路径段（decode 后）。 */
 export declare function jobSegments(jobUrl: string): string[];
 export declare const jobPath: (segments: string[]) => string;
@@ -57,10 +62,41 @@ export declare function getCrumb(ctx: HostCtxLike, server: JenkinsServerLike, op
     field: string;
     value: string;
 } | null>;
-/** 归一化 Jenkins 参数定义（服务端 _class → 本地 type）。 */
+/**
+ * 归一化 Jenkins 参数定义（服务端 `_class` → 本地 type）。
+ *
+ * 覆盖范围（REST 里能直接读到的类型）：
+ * - 内置：string / text / boolean / password / choice / file / credentials；
+ * - 插件：uno-choice（Active Choices：`org.biouno.unochoice.ChoiceParameter` /
+ *   `CascadeChoiceParameter` / `MultiSelectParameter`，选项是脚本生成的 → 这里只能拿到
+ *   默认值，选项列表留给构建页解析兜底）、Extended Choice（`value` 里是列表字符串）、
+ *   DynamicReference（`name` 为空的「分隔行」，映射成界面的虚线条）。
+ */
 export declare function normalizeParamDef(d: Record<string, unknown>): JenkinsParamDef;
-/** 从 job detail 的 property 列表提取参数定义。 */
+/**
+ * 从 job detail 的 property 列表提取参数定义。
+ * - `name` 为空的分隔行按上面的规则处理（有文字 → 虚线条，纯横线 → 丢弃）；
+ * - 同名参数只保留第一个（插件偶尔会重复定义隐藏字段）。
+ */
 export declare function extractParams(prop: unknown[] | undefined): JenkinsParamDef[];
+/**
+ * 构建页 HTML → 各参数的选项列表（uno-choice / 动态 choice 的脚本选项只有渲染后才可见）。
+ *
+ * 页面结构（Jenkins 新版表单）：
+ * ```html
+ * <div class="jenkins-form-item">
+ *   <div class="jenkins-form-label">project</div>
+ *   <div class="setting-main">
+ *     <input name="name" type="hidden" value="project">
+ *     <select name="value"><option value="a">a</option>…</select>
+ * ```
+ * 因此：每个 `<select>` 向前找最近的 `<input name="name" … value="X">`，X 即参数名。
+ */
+export declare function parseBuildPageChoices(html: string): Record<string, {
+    choices: string[];
+    multiSelect: boolean;
+    defaultValue: string;
+}>;
 export { psQuote, normalizeBase, splitHeaders, lastStatus, headerValue };
 export type { ShellService };
 //# sourceMappingURL=jenkins.d.ts.map

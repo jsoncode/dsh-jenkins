@@ -1,14 +1,16 @@
 /**
- * dsh-jenkins —— 统一弹框「发布」tab：项目 → 服务器 / Job 选择 → 参数表单回显 →
+ * dsh-jenkins —— 统一弹框「发布」tab：项目 → 服务器（= 环境） → Job → 参数表单回显 →
  * 触发构建 → 轮询状态（排队 → 构建中 → 结果）。
  *
- * 不做配置门控：始终显示表单。顶部「项目」下拉列出 DSH 工作区（首项「暂无」），用户自选目标项目；
- * 若所选项目存在 dsh-jenkins 配置（dsh-jenkins.json/js/ts），自动启用配置增强
- * （服务器下拉取配置交集、参数默认值、提交走 workspaceTrigger）；无配置时直接
- * 走 trigger 通道（用户手动选服务器 / Job / 参数）。
- * 「选择配置」按钮打开系统文件管理器手动选择一个 dsh-jenkins 配置文件（浏览器读取内容
- * 后经宿主 configParseContent 按内容解析），用其 entries 初始化下方表单；项目自动配置经
- * workspaceTrigger 提交，手动选择的文件配置（无所属工作区）经 trigger 提交。
+ * 只有三行选择项（环境不单独占一行：项目配置里每个环境本来就对应一台服务器）：
+ * 1. **项目**：集中式项目配置（`$DSH_HOME/dsh-jenkins-map.json`，由各工作区根目录的
+ *    dsh-jenkins.{json,js,ts} 自动发现合并而来）里的项目；
+ * 2. **服务器**：候选 = 项目配置引用过的服务器 ∩ 已配置服务器（无交集时退化为全部），
+ *    标签带环境名前缀（`UAT · 腾讯云UAT` / `生产 · 腾讯云生产`）—— **选服务器即切环境**，
+ *    Job 与参数随该环境的发布目标自动切换；
+ * 3. **Job 列表**：按所选服务器实时拉取，自动预选当前环境对应的 Job。
+ *
+ * 发布统一经 trigger 通道提交（服务器 / Job / 参数都由表单解析完毕）。
  */
 import type { ReactNode } from 'react';
 import { type HistoryEntry, type StorageApi } from '../storage.ts';

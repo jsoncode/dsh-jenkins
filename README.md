@@ -27,19 +27,31 @@ Screenshots of the Settings page, workspace entry and run/history modals: see [p
 - **Settings → Jenkins Config** page (`settings.section`): add / edit / delete
   multiple servers (URL, username, Token), test connections, skip TLS verification.
   Only **Server URL** and **Token** are required (username defaults to `admin`).
+- **Project Config** (`$DSH_HOME/dsh-jenkins-map.json`): every project's publish
+  targets in one file — project name → target array, with elements identical to a
+  workspace config file (`{ name?, job, server, environments }`). Each env can carry a
+  **`name` display label** (e.g. `uat环境` / `prod灰度` / `prod环境`) and the number of
+  envs is **unlimited** (an empty name falls back to UAT / Prod / Env N). A
+  `dsh-jenkins.json/js/ts` in a project root is **discovered automatically** (folder
+  name as the project name, missing-only — nothing you edited is overwritten), so
+  there is usually nothing to maintain by hand; to edit, click **Edit map** on the
+  Project Config row of the Config tab (form / JSON). See
+  [Project config](#project-config-dsh-jenkins-mapjson).
 - **Workspace entry** (`sidebar.footer.action`): a footer group with the **Jenkins
-  logo button** (opens the Run Jenkins Job modal) and a **History button** (clock
-  icon, publish history of the last 50 runs across all workspaces, filterable by
-  workspace — defaults to All) appears when the current workspace root contains a
-  `dsh-jenkins.{json,js,ts}` config file.
-  The modal has **searchable dropdowns** for server / job, a parameter form
-  pre-filled from the config, build triggering, and status polling (queued →
-  building → result, with a 10-minute timeout). The server dropdown shows the
-  **intersection of the servers referenced by the config and the servers configured
-  in the plugin**; selecting a server auto-selects the configured job and echoes its
-  parameters. The last submitted **server / job / parameters** are remembered per
-  workspace and auto-echoed the next time the modal opens (browser `localStorage`).
-  A missing or invalid config file is treated as "not configured" — no entry is shown.
+  logo button** (opens the unified modal) and a **History button** (clock icon,
+  publish history of the last 50 runs across all workspaces, filterable by
+  workspace — defaults to All).
+  The Publish tab has just three rows — **project → server → job** — then the
+  parameter form, build triggering and status polling (queued → building → result,
+  10-minute timeout). **The env has no row of its own**: each env in a project
+  config *is* a server, so env selection lives in the **Server** dropdown — whose
+  labels show **only the plugin's server name** (never a mix of the config's env
+  name and the server name), and picking one switches the job / params to that env.
+  Config `server` refs are matched against configured servers by
+  **name → id → full URL → domain** (the domain level ignores scheme, port and
+  context path). The dropdown shows the **intersection of the servers referenced by
+  the project config and the servers configured in the plugin**; the last
+  **parameters** are remembered per project and auto-echoed next time.
 - **Entry visibility**: the sidebar entry follows a **Show in menu** preference
   (default on), toggled from **Settings → Jenkins Config** or the top of the
   modal's **Config** tab. When off the entry renders nothing; the host settings
@@ -48,19 +60,23 @@ Screenshots of the Settings page, workspace entry and run/history modals: see [p
 - **Model tools** (docs/develop/basic/tool): `dsh_jenkins_build`, `dsh_jenkins_status`.
 - **Config** (docs/develop/basic/config): Schemastery `Config` + a plugin data file
   `$DSH_HOME/dsh-jenkins.json` (server tokens encrypted with the machine-bound key
-  `$DSH_HOME/dsh-jenkins.key`, cache in plaintext; on first run any legacy
-  `dsh-jenkins` namespace in `settings.yaml` is migrated once and cleared).
+  `$DSH_HOME/dsh-jenkins.key`, cache in plaintext); the project config is its own
+  file `$DSH_HOME/dsh-jenkins-map.json` (plaintext, hand-editable). On first run any
+  legacy `dsh-jenkins` namespace in `settings.yaml` is migrated once and cleared; a
+  legacy `projects` field inside `dsh-jenkins.json` is migrated into the new file
+  (missing-only).
 - **Packaging** (docs/develop/basic/publish): `dsh.bundle` + `dsh.client`(web) manifests.
 
 ## Structure
 
 ```
-├── src/host/*.ts       # Host half source: index.ts (entry), jenkins.ts (curl core), ops.ts (op dispatch), workspace-config.ts, types.ts
-├── src/client/*.tsx    # Browser half source (React TSX components): Settings page, footer entry, run-job modal, history modal
+├── src/host/*.ts       # Host half: index.ts (entry), jenkins.ts (curl core), ops.ts (op dispatch), project-map.ts (project config file), projects.ts (normalize/merge), workspace-config.ts, types.ts
+├── src/client/*.tsx    # Browser half (React TSX): settings page, footer entry, publish modal, project config modal, history modal
 ├── lib/index.js        # Host half build artifact (tsdown, ESM), committed for git installs
 ├── lib/client.js       # Browser half build artifact (tsdown → __ModuleLoader__ factory), committed
 ├── lib/types/          # Type declarations (generated by tsc -b)
-├── scripts/            # verify-client.mjs (host-seed simulation check)
+├── scripts/            # verify-client.mjs (host-seed simulation check) + isolated tests
+├── examples/           # sample configs: dsh-jenkins.json (workspace array), dsh-jenkins-map.json (central map)
 ├── tsdown.config.ts    # tsdown build config (node half + client bundle banner wrapper)
 ├── tsconfig.json       # solution: references tsconfig.host.json / tsconfig.client.json
 ├── cordis.patch.yml    # Bundle patch: plugin row referenced by package name (no paths)
@@ -96,12 +112,96 @@ are evaluated with node (CJS `module.exports` or ESM `export default`):
   Settings → Jenkins).
 - `environments` (optional): the parameter map for this target (booleans render as
   checkboxes, everything else as text fields).
-- The modal's server dropdown shows the **intersection** of the servers referenced
-  by the config and the servers configured in the plugin; selecting a server
-  auto-selects the matching `job` (left empty when absent from the Jenkins job list,
-  letting the user choose) and echoes its parameters. If the intersection is empty,
-  the dropdown degrades to all servers with a hint. A missing or invalid config is
-  treated as "not configured" — the entry is hidden.
+- Such a file is now a **discovery source**: the plugin reads it into
+  [Project Config](#project-config-dsh-jenkins-mapjson) under the **workspace folder
+  name** (missing-only — existing projects are never overwritten). Just pick the
+  project on the Publish tab; server / job / params come from the current env.
+
+## Project config (`dsh-jenkins-map.json`)
+
+One config for every project: **project name → target array**. Each env may carry a
+**`name` display label** (e.g. `uat环境` / `prod灰度` / `prod环境`) and the number of
+envs is **unlimited** (env 1 is the default, usually UAT); when the name is empty the
+UI falls back to `UAT` / `Prod` / `Env N`. Elements are identical to a workspace config
+file, so they can be moved back and forth:
+
+```json
+{
+  "health-check-ui": [
+    {
+      "name": "uat环境",
+      "job": "system3_Front_docker3",
+      "server": "https://dev-jenkins-tx.whale-plus.com",
+      "environments": {
+        "project": "health-check-ui",
+        "branch": "uat5",
+        "NodeVersion": "v24.12.0",
+        "INSTALL_COMMAND_ACTIVE": "pnpm i --registry=https://repo.huaweicloud.com/repository/npm/",
+        "BUILD_COMMAND_ACTIVE": "pnpm build:uat"
+      }
+    },
+    {
+      "name": "prod灰度",
+      "job": "pro_system3_Front_docker3_gray",
+      "server": "https://jenkins-tx.whale-plus.com",
+      "environments": {
+        "project": "health-check-ui",
+        "branch": "release/gray",
+        "NodeVersion": "v24.12.0",
+        "BUILD_COMMAND_ACTIVE": "pnpm build:gray"
+      }
+    },
+    {
+      "name": "prod环境",
+      "job": "pro_system3_Front_docker3",
+      "server": "https://jenkins-tx.whale-plus.com",
+      "environments": {
+        "project": "health-check-ui",
+        "branch": "master5",
+        "NodeVersion": "v24.12.0",
+        "BUILD_COMMAND_ACTIVE": "pnpm build:prod"
+      }
+    }
+  ]
+}
+```
+
+- **Where it lives**: its own file **`$DSH_HOME/dsh-jenkins-map.json`** (a bare map,
+  no wrapper, plaintext; a missing file loads as `{}`, a corrupt one is backed up to
+  `.bak` and treated as empty). A legacy `projects` field inside `dsh-jenkins.json`
+  is migrated into this file on first startup (missing-only).
+- **`name` (env display label)**: optional; an empty string is dropped (no
+  `"name": ""` is written). It shows up in the Server dropdown label and in Local
+  Records, so a build's env is obvious at a glance.
+- **Unlimited envs**: a project may have any number of targets (UAT / gray / prod /
+  overseas…); array order is display order and item 1 is the default.
+- **Discovery**: opening the Config / Publish tab scans every **open workspace root**
+  for `dsh-jenkins.json/js/ts` and merges it under the **folder name** —
+  **missing-only by default**, so hand-edited projects are never clobbered. To pull
+  in updated workspace configs, tick **Overwrite same-name projects** and hit
+  **Rediscover** in the modal footer.
+- **Editing**: on the Config tab, the **Project Config** row
+  (`dsh-jenkins-map.json · N projects`) → **Edit map**:
+  - **Form**: project list; each env row is env name (optional, placeholder shows the
+    fallback) + job + server + **N params** (expands that env's key/value editor,
+    values text / number / boolean) + a per-row remove button; **Add env** has no cap,
+    and projects / envs / params can all be added or removed;
+  - **JSON**: the whole map as JSON — paste your own config wholesale, then
+    **Apply JSON** to write it back into the form.
+- **`server` refs** may be a server **name / id / full URL / bare domain**; they are
+  matched against configured servers by **name → id → full URL (trailing slash
+  ignored) → domain**, where the domain level ignores scheme, port and context path
+  (`http://jenkins-tx.example.com:8080/jenkins` equals the configured
+  `https://jenkins-tx.example.com`). When nothing matches, the Publish tab shows a
+  hint under the server row and the dropdown falls back to all servers.
+- **One-click publish**: the **Project dropdown** on the Publish tab lists the map's
+  projects; the env is switched **straight from the Server dropdown** (its labels are
+  just the plugin's server names — the config's env name is not mixed in), which
+  brings that env's job and params with it — then hit Submit. Records are grouped as
+  "Project Config: <name>" on the Local Records tab (filterable / clearable per
+  project, and each record shows the env name).
+- **Hand editing**: the file *is* the map — edit it in any editor; the next read
+  picks it up (the file is re-parsed on every load).
 
 ## Installation
 
@@ -188,7 +288,9 @@ pnpm run check         # whole-tree TypeScript type check (tsc -b)
 pnpm run build         # rebuild both halves after editing source (tsc -b && tsdown)
 pnpm run watch         # tsdown watch mode (rebuild on src/client changes)
 pnpm run verify        # simulate the host seed table to check lib/client.js loads
-pnpm run test          # isolated tests: curl -D dump parsing (incl. proxy CONNECT block) + failure log
+pnpm run test          # isolated tests: curl dump parsing + failure log + param parsing + centralized project config
+pnpm run test:params   # param parsing: built-in types / uno-choice / Extended Choice / build-page fallback
+pnpm run test:store    # data-file round-trip: token encryption / migration / keep-token semantics
 ```
 
 - Host half lives in `src/host/`; browser half in `src/client/` (build entry
@@ -199,6 +301,34 @@ pnpm run test          # isolated tests: curl -D dump parsing (incl. proxy CONNE
 - External dependencies in the artifact (`react`,
   `@deepseek-ai/dsh-client-ui-primitives`, ...) stay external and resolve from
   the host module table (seed) at runtime.
+
+## Job parameter recognition
+
+The Publish tab renders its parameter form from the server-side definitions:
+
+| Server-side type | Control |
+| --- | --- |
+| `StringParameterDefinition` / uno-choice dynamic reference | single-line text |
+| `TextParameterDefinition` | textarea |
+| `BooleanParameterDefinition` | checkbox |
+| `PasswordParameterDefinition` / `CredentialsParameterDefinition` / `FileParameterDefinition` | password / text field |
+| `ChoiceParameterDefinition`, uno-choice `ChoiceParameter` / `CascadeChoiceParameter`, Extended Choice single | searchable dropdown |
+| Extended Choice multi-select / uno-choice `MultiSelectParameter` | checkbox list (submitted joined by the delimiter) |
+
+- **Script-generated options** (Active Choices / uno-choice `ChoiceParameter`,
+  `CascadeChoiceParameter`) expose only `_class` + default in REST `/api/json` — the
+  option list is computed by Groovy at render time. Those params automatically
+  **fall back to the build page HTML** (`job/<path>/build`) and are parsed from its
+  `<select>` options, so a `project` dropdown lists every project. When it still
+  cannot be resolved the field degrades to a text input with an inline hint instead
+  of showing an empty dropdown.
+- **Defaults** come from either `defaultValue` (built-ins) or
+  `defaultParameterValue.value` (plugin types such as uno-choice), so
+  `project=boss_backend` is pre-filled correctly.
+- **Separator rows**: uno-choice `DynamicReferenceParameter` entries (empty `name`)
+  never become empty fields — dash-only ones are dropped, ones with text render as a
+  dashed divider note.
+- Duplicate parameter names keep the first definition; unknown types fall back to text.
 
 ## Troubleshooting (failure log)
 

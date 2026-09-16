@@ -48,8 +48,20 @@ export interface StorageApi {
     clearHistory(sessionId: string, cwd: string | null): Promise<void>;
 }
 export declare function createStorage(run: RunFn): StorageApi;
-/** 服务器匹配：配置里的 server（名称 / id / 地址）与已配置服务器比对（地址去尾部斜杠）。 */
+/** 服务器地址归一化：去空白 + 去尾部斜杠。 */
 export declare const normServerUrl: (u: string) => string;
+/**
+ * 取地址的**域名**（主机名小写）：忽略协议 / 端口 / 上下文路径 / URL 内嵌凭据，
+ * 例如 `https://jenkins-tx.whale-plus.com/` 与 `http://jenkins-tx.whale-plus.com:8080/jenkins`
+ * 都归到 `jenkins-tx.whale-plus.com`。解析失败时退化为字符串切分。
+ */
+export declare const serverHost: (u: string) => string;
+/**
+ * 服务器匹配：配置里的 server（名称 / id / 地址）与插件里已配置的服务器比对。
+ * 依次尝试 **名称 → id → 完整地址（去尾部斜杠）→ 域名**：
+ * 前三级保证精确命中；最后一级按域名匹配 —— 配置里通常写完整地址（或只写域名），
+ * 而插件里的服务器地址可能带端口 / 上下文路径，只要域名相同就认为是同一台。
+ */
 export declare function matchServer(s: {
     name: string;
     id: string;

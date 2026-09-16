@@ -2,7 +2,9 @@
  * dsh-jenkins —— Jenkins CLI 插件 · 宿主半边（可发布组合包，无硬编码路径）
  *
  * - 插件数据（服务器列表 + 浏览器缓存）持久化到 $DSH_HOME/dsh-jenkins.json
- *   （服务器 Token 以 dsh-jenkins.key 机器绑定密钥 AES-256-GCM 加密；缓存明文）。
+ *   （服务器 Token 以 dsh-jenkins.key 机器绑定密钥 AES-256-GCM 加密；缓存明文）；
+ *   集中式项目配置是独立文件 $DSH_HOME/dsh-jenkins-map.json（项目名 → 发布目标数组），
+ *   各工作区根目录的 dsh-jenkins.{json,js,ts} 作为「发现式配置」自动合并进去。
  *   settings 命名空间仅用于一次性迁移旧版数据：首次运行时若发现 settings.yaml
  *   中的 dsh-jenkins 命名空间有数据，自动提取到数据文件并清空旧命名空间，
  *   之后不再读写宿主默认设置；

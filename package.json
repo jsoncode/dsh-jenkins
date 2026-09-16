@@ -28,7 +28,10 @@
     "test:store": "tsx scripts/test-store.mts && tsx scripts/dryrun-migrate.mts && tsx scripts/test-save-keep-token.mts",
     "test:curl": "tsx scripts/test-curl-dump.mts",
     "test:log": "tsx scripts/test-failure-log.mts",
-    "test": "npm run test:curl && npm run test:log",
+    "test:projects": "tsx scripts/test-projects.mts && tsx scripts/test-project-ops.mts",
+    "test:params": "tsx scripts/test-params.mts",
+    "test:match": "tsx scripts/test-server-match.mts",
+    "test": "npm run test:curl && npm run test:log && npm run test:params && npm run test:match && npm run test:projects",
     "release": "npm run check && npm run build && npm run verify && npm run test && npm version patch -m \"release: v%s\" && git push --follow-tags",
     "publish:npm": "npm run check && npm run build && npm run verify && npm run test && npm publish --access public"
   },

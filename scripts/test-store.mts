@@ -19,9 +19,9 @@ resetStoreDirCache()
 resolveStoreDir(dir) // 缓存 dir
 
 try {
-  // 1) 保存带 token 的 store
+  // 1) 保存带 token 的 store（项目配置已迁到独立文件 dsh-jenkins-map.json，不在本文件）
   const store: JenkinsStore = {
-    version: 1,
+    version: 2,
     servers: [{
       id: 'srv-1', name: 'UAT', baseUrl: 'https://uat.example.com',
       username: 'jason', token: 'secret-token-123', insecure: false, verified: true,
@@ -34,7 +34,8 @@ try {
   if (!parsed.servers[0].token.startsWith('enc:v1:')) fail('token not encrypted on disk')
   if (raw.includes('secret-token-123')) fail('plaintext token leaked to file')
   if (parsed.servers[0].name !== 'UAT' || parsed.cache.lastParams['/ws'].parameters.BRANCH !== 'main') fail('data lost in seal')
-  ok('saveStore: token 加密落盘，其余字段/缓存保留')
+  if ('projects' in parsed) fail('store file must not contain projects (moved to dsh-jenkins-map.json)')
+  ok('saveStore: token 加密落盘，其余字段/缓存保留（不含 projects）')
 
   const keyFile = await readFile(join(dir, 'dsh-jenkins.key'), 'utf8')
   if (!keyFile.trim()) fail('key file empty')
@@ -46,7 +47,8 @@ try {
   if (loaded.servers[0].token !== 'secret-token-123') fail('token not decrypted: ' + loaded.servers[0].token)
   if (loaded.servers[0].verified !== true) fail('verified flag lost')
   if (!loaded.cache.lastParams || !loaded.cache.history) fail('cache shape lost')
-  ok('loadStore: token 解回明文，verified/cache 完整')
+  if (Object.keys(loaded.legacyProjects).length !== 0) fail('legacyProjects should be empty for a current-format file')
+  ok('loadStore: token 解回明文，verified/cache 完整，legacyProjects 为空')
 
   // 3) 文件不存在 → null
   const emptyDir = join(dir, 'none')
@@ -68,7 +70,7 @@ try {
     username: 'jason', token: '11eb9fba200afd245c297a0e9a0a094a85', insecure: false, verified: true,
   }])
   const legacyCache = JSON.stringify({ lastParams: {}, history: { '/ws': [{ id: 'h1', time: 1, job: 'j', server: 's' }] } })
-  const migrateStore: JenkinsStore = { version: 1, servers: JSON.parse(legacyServers), cache: JSON.parse(legacyCache) }
+  const migrateStore: JenkinsStore = { version: 2, servers: JSON.parse(legacyServers), cache: JSON.parse(legacyCache) }
   await saveStore(dir, migrateStore)
   const migrated = await loadStore(dir)
   if (migrated === null) fail('migrated store not loadable')

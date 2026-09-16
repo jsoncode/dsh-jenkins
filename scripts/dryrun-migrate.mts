@@ -51,7 +51,7 @@ try {
   // 模拟 migrateLegacy：parse 旧 JSON 字符串 → 组装 store → saveStore
   const servers = JSON.parse(legacyServersJson)
   const cache = JSON.parse(legacyCacheJson)
-  const store: JenkinsStore = { version: 1, servers, cache }
+  const store: JenkinsStore = { version: 2, servers, projects: {}, cache }
   await saveStore(dir, store)
 
   // 读取落盘文件：token 必须加密、中文必须完好（UTF-8）

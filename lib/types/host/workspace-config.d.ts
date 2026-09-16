@@ -11,7 +11,7 @@ export interface FoundConfigFile {
     name: string;
     target: string;
 }
-/** 校验并归一化配置（数组格式，每个元素 = { job, server, parameters }）。 */
+/** 校验并归一化配置（数组格式，每个元素 = { name?, job, server, parameters }）。 */
 export declare function normalizeConfig(raw: unknown): WorkspaceConfig;
 /** 加载工作区配置（不存在返回 null）。 */
 export declare function loadWorkspaceConfig(fsService: FsService, shell: ShellService, cwd: string): Promise<(WorkspaceConfig & {

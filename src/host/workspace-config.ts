@@ -49,10 +49,10 @@ async function parseConfigFile(fsService: FsService, shell: ShellService, found:
   return JSON.parse((res.stdout && res.stdout.text) || '{}')
 }
 
-/** 校验并归一化配置（数组格式，每个元素 = { job, server, parameters }）。 */
+/** 校验并归一化配置（数组格式，每个元素 = { name?, job, server, parameters }）。 */
 export function normalizeConfig(raw: unknown): WorkspaceConfig {
-  // 新格式：数组，每个元素 = 一个发布目标（job + server + environments 参数表）。
-  if (!Array.isArray(raw)) throw new Error('配置文件需导出数组（每个元素一个发布目标：{ job, server, environments }）')
+  // 新格式：数组，每个元素 = 一个发布目标（name 选填 + job + server + environments 参数表）。
+  if (!Array.isArray(raw)) throw new Error('配置文件需导出数组（每个元素一个发布目标：{ name?, job, server, environments }）')
   if (raw.length === 0) throw new Error('配置文件数组不能为空')
   const entries = raw.map((e, i) => {
     if (!e || typeof e !== 'object' || Array.isArray(e)) {
@@ -66,7 +66,11 @@ export function normalizeConfig(raw: unknown): WorkspaceConfig {
     const parameters = (record.environments && typeof record.environments === 'object' && !Array.isArray(record.environments))
       ? (record.environments as Record<string, string | number | boolean>)
       : {}
-    return { job, server, parameters } satisfies WorkspaceDeployTarget
+    // name：环境显示名（选填；空则省略，发现到集中配置时按下标回退）
+    const name = String(record.name || '').trim()
+    const target: WorkspaceDeployTarget = { job, server, parameters }
+    if (name) target.name = name
+    return target
   })
   return { format: 'array', entries }
 }

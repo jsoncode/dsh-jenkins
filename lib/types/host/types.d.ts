@@ -38,6 +38,10 @@ export interface JenkinsParamDef {
     type: string;
     defaultValue: string | number | boolean;
     choices: string[] | null;
+    /** 多选（Extended Choice multiSelect / uno-choice MultiSelect）：提交时按 delimiter 拼接。 */
+    multiSelect?: boolean;
+    /** 多选值的分隔符（默认 `,`）。 */
+    delimiter?: string;
 }
 /** 命令 / 工具入参（op 分发请求）。 */
 export interface OpRequest {
@@ -76,6 +80,8 @@ export interface HttpResponse {
 }
 /** 工作区 dsh-jenkins.{json,js,ts} 配置：数组，每个元素一个发布目标。 */
 export interface WorkspaceDeployTarget {
+    /** 该环境的显示名（选填，如 uat环境 / prod灰度）；发现到集中配置时一起带过去。 */
+    name?: string;
     job: string;
     server: string;
     parameters: Record<string, string | number | boolean>;
@@ -85,6 +91,24 @@ export interface WorkspaceConfig {
     entries: WorkspaceDeployTarget[];
     file?: string;
 }
+/**
+ * 集中式「项目配置」里的一个发布目标：与工作区配置文件元素**同构**
+ * （`{ name?, job, server, environments }`）：
+ * - `name`（选填）：该环境的显示名（如 `uat环境` / `prod灰度` / `prod环境`），
+ *   发布时用于服务器下拉标签与历史记录；省略时按下标回退为 UAT / 生产 / 环境 N；
+ * - 每个项目的发布目标数量不限（不再假定只有 UAT / 生产两项）。
+ */
+export interface ProjectTarget {
+    name?: string;
+    job: string;
+    server: string;
+    environments: Record<string, string | number | boolean>;
+}
+/**
+ * 集中式多项目配置：项目名 → 发布目标数组。
+ * 数组顺序 = 环境顺序（第 1 项为默认环境，通常写 UAT），数量不限。
+ */
+export type ProjectConfigMap = Record<string, ProjectTarget[]>;
 /** curl 请求选项。 */
 export interface JenkinsRequestOptions {
     method?: 'GET' | 'POST';

@@ -28,6 +28,22 @@ const psQuote = (v: string | number | boolean): string => `'${String(v).replace(
 
 const normalizeBase = (u: string): string => String(u || '').trim().replace(/\/+$/, '')
 
+/**
+ * 取地址的**域名**（主机名小写）：忽略协议 / 端口 / 上下文路径 / URL 内嵌凭据。
+ * 与浏览器半边 `client/storage.ts` 的 serverHost 保持一致（同一个匹配语义）。
+ */
+export function serverHost(u: string): string {
+  const raw = String(u || '').trim()
+  if (raw === '') return ''
+  try {
+    return new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : 'http://' + raw).hostname.toLowerCase()
+  } catch {
+    const stripped = raw.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').split(/[/?#]/)[0]
+    const afterCreds = stripped.indexOf('@') !== -1 ? stripped.slice(stripped.lastIndexOf('@') + 1) : stripped
+    return afterCreds.split(':')[0].toLowerCase()
+  }
+}
+
 /** 从 job URL 中提取路径段（decode 后）。 */
 export function jobSegments(jobUrl: string): string[] {
   const m = String(jobUrl || '').match(/\/job\/(.+?)\/?$/)
@@ -407,30 +423,118 @@ export async function getCrumb(ctx: HostCtxLike, server: JenkinsServerLike, op?:
   return null
 }
 
-/** 归一化 Jenkins 参数定义（服务端 _class → 本地 type）。 */
+/** HTML 实体解码（构建页 <option> 文本 / value 用）。 */
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, '\'')
+    .replace(/&apos;/g, '\'')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+}
+
+/**
+ * 把「列表值」字符串拆成选项。
+ * Extended Choice 的 `value` 是**选项清单**（多行或逗号分隔），而 `multiSelectDelimiter`
+ * 只用于提交时拼接多个已选值 —— 因此优先按换行拆，其次才是分隔符 / 逗号。
+ */
+function splitChoices(raw: string, delimiter?: string): string[] {
+  const text = String(raw || '')
+  if (text.trim() === '') return []
+  const parts = text.indexOf('\n') !== -1
+    ? text.split(/\r?\n/)
+    : text.split(delimiter && delimiter !== '' ? delimiter : ',')
+  return parts.map((s) => s.trim()).filter((s) => s !== '')
+}
+
+/** 从 JSON 定义里取参数默认值：`defaultValue` 或插件的 `defaultParameterValue.value`。 */
+function defaultOf(d: Record<string, unknown>): string | number | boolean {
+  const direct = d.defaultValue
+  if (direct !== undefined && direct !== null && typeof direct !== 'object') return direct as string | number | boolean
+  const wrapped = d.defaultParameterValue as Record<string, unknown> | undefined
+  const value = wrapped && wrapped.value
+  if (value !== undefined && value !== null && typeof value !== 'object') return value as string | number | boolean
+  return ''
+}
+
+/** 从 JSON 定义里取选项列表（classic `choices` / extended-choice `value`）。 */
+function choicesOf(d: Record<string, unknown>, multi: boolean): string[] | null {
+  const raw = d.choices !== undefined ? d.choices : d.value
+  if (Array.isArray(raw)) return raw.map((c) => String(c))
+  if (typeof raw === 'string') {
+    const delimiter = typeof d.multiSelectDelimiter === 'string' ? d.multiSelectDelimiter : undefined
+    const list = splitChoices(raw, multi ? delimiter : undefined)
+    return list.length > 0 ? list : null
+  }
+  return null
+}
+
+/**
+ * 归一化 Jenkins 参数定义（服务端 `_class` → 本地 type）。
+ *
+ * 覆盖范围（REST 里能直接读到的类型）：
+ * - 内置：string / text / boolean / password / choice / file / credentials；
+ * - 插件：uno-choice（Active Choices：`org.biouno.unochoice.ChoiceParameter` /
+ *   `CascadeChoiceParameter` / `MultiSelectParameter`，选项是脚本生成的 → 这里只能拿到
+ *   默认值，选项列表留给构建页解析兜底）、Extended Choice（`value` 里是列表字符串）、
+ *   DynamicReference（`name` 为空的「分隔行」，映射成界面的虚线条）。
+ */
 export function normalizeParamDef(d: Record<string, unknown>): JenkinsParamDef {
   const cls = String(d._class || '')
-  const name = String(d.name || '')
+  const name = String(d.name || '').trim()
   const desc = String(d.description || '')
+  const defaultValue = defaultOf(d)
+  // 插件的动态引用参数（uno-choice 的「分隔/说明行」）name 为空：不产生表单字段。
+  // 描述里有实际文字时映射成虚线条（与 name 为 `---` 的约定一致），纯横线/空则整条丢弃。
+  if (name === '' && cls.indexOf('DynamicReferenceParameter') !== -1) {
+    const text = desc.trim()
+    return { name: '', description: /^[-—–\s]*$/.test(text) ? '' : text, type: 'divider', defaultValue: '', choices: null }
+  }
   let type = 'string'
-  let defaultValue: string | number | boolean = d.defaultValue as string | number | boolean
   let choices: string[] | null = null
+  let multiSelect = false
+  let delimiter: string | null = null
   if (cls.indexOf('BooleanParameterDefinition') !== -1) type = 'boolean'
-  else if (cls.indexOf('ChoiceParameterDefinition') !== -1) { type = 'choice'; choices = Array.isArray(d.choices) ? (d.choices as string[]) : [] }
   else if (cls.indexOf('PasswordParameterDefinition') !== -1) type = 'password'
   else if (cls.indexOf('TextParameterDefinition') !== -1) type = 'text'
   else if (cls.indexOf('CredentialsParameterDefinition') !== -1) type = 'credentials'
   else if (cls.indexOf('FileParameterDefinition') !== -1) type = 'file'
+  else if (cls.indexOf('MultiSelect') !== -1) {
+    // uno-choice MultiSelectParameter
+    type = 'choice'
+    multiSelect = true
+    choices = choicesOf(d, true)
+  } else if (cls.indexOf('ChoiceParameter') !== -1) {
+    // classic ChoiceParameterDefinition / uno-choice ChoiceParameter、CascadeChoiceParameter /
+    // ExtendedChoiceParameterDefinition（脚本生成的选项取不到，构建页解析兜底）
+    type = 'choice'
+    // Extended Choice 用 type 区分单选/多选：PT_SINGLE_SELECT / PT_MULTI_SELECT /
+    // PT_CHECKBOX / PT_RADIO（大小写与下划线都不统一）
+    const kind = typeof d.type === 'string' ? d.type : ''
+    if (/multi[_ -]?select|checkbox/i.test(kind)) multiSelect = true
+    choices = choicesOf(d, multiSelect)
+    if (multiSelect) {
+      delimiter = typeof d.multiSelectDelimiter === 'string' && d.multiSelectDelimiter !== '' ? d.multiSelectDelimiter : ','
+    }
+  }
   return {
     name,
     description: desc,
     type,
     defaultValue: defaultValue === null || defaultValue === undefined ? '' : defaultValue,
     choices,
+    ...(type === 'choice' && multiSelect ? { multiSelect: true } : {}),
+    ...(delimiter !== null ? { delimiter } : {}),
   }
 }
 
-/** 从 job detail 的 property 列表提取参数定义。 */
+/**
+ * 从 job detail 的 property 列表提取参数定义。
+ * - `name` 为空的分隔行按上面的规则处理（有文字 → 虚线条，纯横线 → 丢弃）；
+ * - 同名参数只保留第一个（插件偶尔会重复定义隐藏字段）。
+ */
 export function extractParams(prop: unknown[] | undefined): JenkinsParamDef[] {
   const list = prop || []
   let holder: Record<string, unknown> | null = null
@@ -438,10 +542,80 @@ export function extractParams(prop: unknown[] | undefined): JenkinsParamDef[] {
     const x = list[i] as Record<string, unknown> | null
     if (x && String(x._class || '').indexOf('ParametersDefinitionProperty') !== -1) { holder = x; break }
   }
+  // 没有 ParametersDefinitionProperty 时兜底：直接找带 parameterDefinitions 的 property
+  if (holder === null) {
+    for (let i = 0; i < list.length; i++) {
+      const x = list[i] as Record<string, unknown> | null
+      if (x && Array.isArray(x.parameterDefinitions)) { holder = x; break }
+    }
+  }
   if (!holder) return []
   const defs = (holder.parameterDefinitions as Record<string, unknown>[]) || []
   const out: JenkinsParamDef[] = []
-  for (let i = 0; i < defs.length; i++) out.push(normalizeParamDef(defs[i]))
+  const seen = new Set<string>()
+  let dividerIndex = 0
+  for (let i = 0; i < defs.length; i++) {
+    const def = normalizeParamDef(defs[i])
+    if (def.name === '') {
+      // 分隔行：带文字才保留（合成唯一名字，避免界面里多个分隔线互相覆盖）
+      if (def.type !== 'divider' || def.description === '') continue
+      dividerIndex += 1
+      out.push({ ...def, name: '---' + dividerIndex })
+      continue
+    }
+    if (seen.has(def.name)) continue
+    seen.add(def.name)
+    out.push(def)
+  }
+  return out
+}
+
+/**
+ * 构建页 HTML → 各参数的选项列表（uno-choice / 动态 choice 的脚本选项只有渲染后才可见）。
+ *
+ * 页面结构（Jenkins 新版表单）：
+ * ```html
+ * <div class="jenkins-form-item">
+ *   <div class="jenkins-form-label">project</div>
+ *   <div class="setting-main">
+ *     <input name="name" type="hidden" value="project">
+ *     <select name="value"><option value="a">a</option>…</select>
+ * ```
+ * 因此：每个 `<select>` 向前找最近的 `<input name="name" … value="X">`，X 即参数名。
+ */
+export function parseBuildPageChoices(html: string): Record<string, { choices: string[]; multiSelect: boolean; defaultValue: string }> {
+  const out: Record<string, { choices: string[]; multiSelect: boolean; defaultValue: string }> = {}
+  const text = String(html || '')
+  const selectRe = /<select\b[^>]*>([\s\S]*?)<\/select>/gi
+  const nameRe = /<input\b[^>]*\bname="name"[^>]*>/gi
+  let m: RegExpExecArray | null
+  while ((m = selectRe.exec(text)) !== null) {
+    const selectTag = m[0].slice(0, m[0].indexOf('>') + 1)
+    const body = m[1]
+    // 向前找最近的一个参数名隐藏域
+    let name = ''
+    let nm: RegExpExecArray | null
+    nameRe.lastIndex = 0
+    while ((nm = nameRe.exec(text.slice(0, m.index))) !== null) {
+      const valueMatch = nm[0].match(/\bvalue="([^"]*)"/i)
+      name = valueMatch ? decodeEntities(valueMatch[1]).trim() : ''
+    }
+    if (name === '') continue
+    const choices: string[] = []
+    let defaultValue = ''
+    const optionRe = /<option\b([^>]*)>([\s\S]*?)<\/option>/gi
+    let om: RegExpExecArray | null
+    while ((om = optionRe.exec(body)) !== null) {
+      const attrs = om[1]
+      const valueMatch = attrs.match(/\bvalue="([^"]*)"/i)
+      const value = valueMatch ? decodeEntities(valueMatch[1]) : decodeEntities(om[2].replace(/<[^>]*>/g, '').trim())
+      if (value === '') continue
+      choices.push(value)
+      if (/\bselected\b/i.test(attrs) && defaultValue === '') defaultValue = value
+    }
+    if (choices.length === 0) continue
+    out[name] = { choices, multiSelect: /\bmultiple\b/i.test(selectTag), defaultValue }
+  }
   return out
 }
 

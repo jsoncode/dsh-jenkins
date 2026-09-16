@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { t } from '../i18n.ts'
+import { isProjectCwd, projectNameOfCwd } from '../projects.ts'
 import { type HistoryEntry, type StorageApi } from '../storage.ts'
 import type { RunFn } from '../rpc.ts'
 import type { Poller } from '../poller.ts'
@@ -62,9 +63,11 @@ export function HistoryTab({ cwd, sessionId, run, poller, storage, onCountChange
     })
     return () => { alive = false }
   }, [reload, poller, storage, sessionId])
-  // 工作区选项：仅列出曾经发布过的记录里的工作区（去重排序），外加「全部」
+  // 工作区选项：仅列出曾经发布过的记录里的工作区（去重排序），外加「全部」。
+  // 集中式项目的分桶键（@project/<项目名>）显示为「项目配置：xxx」，键本身仍是筛选 id。
+  const cwdLabel = (key: string): string => (isProjectCwd(key) ? t('projectConfigTag') + '：' + projectNameOfCwd(key) : key)
   const wsPaths = [...new Set(list.map((e) => e.cwd).filter((p): p is string => !!p))].sort()
-  const wsOptions = [{ id: 'all', label: t('historyAll') }].concat(wsPaths.map((p) => ({ id: p, label: p })))
+  const wsOptions = [{ id: 'all', label: t('historyAll') }].concat(wsPaths.map((p) => ({ id: p, label: cwdLabel(p) })))
   const filtered = filter === 'all' ? list : list.filter((e) => e.cwd === filter)
   // 分页：默认每页 20 条，可切换每页条数；筛选/数据变化时页号收敛到有效范围
   const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
@@ -181,7 +184,7 @@ export function HistoryTab({ cwd, sessionId, run, poller, storage, onCountChange
                   <div className="dshj-history-meta">
                     {e.server ? <span className="dshj-chip">{e.server}</span> : null}
                     {e.buildNumber ? <span className="dshj-chip">#{e.buildNumber}</span> : e.queueId ? <span className="dshj-chip">Q#{e.queueId}</span> : null}
-                    {filter === 'all' && e.cwd ? <span className="dshj-chip dshj-chip-ws">{e.cwd}</span> : null}
+                    {filter === 'all' && e.cwd ? <span className="dshj-chip dshj-chip-ws">{cwdLabel(e.cwd)}</span> : null}
                   </div>
                   {hasParams ? (
                     <div className="dshj-history-params-row">
@@ -261,7 +264,7 @@ export function HistoryTab({ cwd, sessionId, run, poller, storage, onCountChange
           </div>
           <div className="dshj-modal-body">
             <div className="dshj-empty">
-              {filter === 'all' ? t('confirmClearAll') : t('confirmClearCwd', { path: filter })}
+              {filter === 'all' ? t('confirmClearAll') : t('confirmClearCwd', { path: cwdLabel(filter) })}
             </div>
           </div>
           <div className="dshj-modal-footer">

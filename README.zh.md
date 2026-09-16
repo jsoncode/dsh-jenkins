@@ -24,34 +24,47 @@
 
 - **设置 → Jenkins 配置** 页（`settings.section`）：多服务器增删改查、测试连接、
   跳过 TLS 校验。仅 **服务器地址** 与 **Token** 必填（用户名为选填，缺省 `admin`）。
-- **工作区入口**（`sidebar.footer.action`）：当当前工作区根目录存在
-  `dsh-jenkins.{json,js,ts}` 配置时，侧边栏底部出现一组按钮——**Jenkins logo 按钮**
-  （打开执行弹框）+ **历史按钮**（时钟图标，查看所有工作区最近 50 次发布记录，
+- **项目配置**（`$DSH_HOME/dsh-jenkins-map.json`）：所有项目的发布目标集中在一个文件里
+  —— 项目名 → 发布目标数组，元素结构与工作区配置文件完全一致
+  （`{ name?, job, server, environments }`）。每个环境可用 **`name` 起显示名**
+  （如 `uat环境` / `prod灰度` / `prod环境`），**环境数量不限**（留空按下标回退
+  UAT / 生产 / 环境 N）。**各项目根目录的 `dsh-jenkins.json/js/ts` 会被自动发现**
+  （以文件夹名为项目名，只补缺失、不覆盖已有项目），因此通常无需手工维护；
+  需要手改时，「配置」tab 的**项目配置**一行点「编辑 map」即可（表单 / JSON 双模式）。
+  详见下文「[项目配置（dsh-jenkins-map.json）](#项目配置dsh-jenkins-mapjson)」。
+- **工作区入口**（`sidebar.footer.action`）：侧边栏底部的一组按钮 —— **Jenkins logo 按钮**
+  （打开统一弹框）+ **历史按钮**（时钟图标，查看所有工作区最近 50 次发布记录，
   可按工作区筛选，默认全部）。
-  执行弹框内**服务器 / Job 可搜索下拉选择 → 参数表单回显 → 提交构建 → 轮询状态**
-  （排队 → 构建中 → 结果，10 分钟超时）。服务器下拉取「配置引用过的服务器 ∩
-  插件已配置服务器」的交集，选中服务器后自动预选配置里对应的 Job 并回填参数；
-  同一工作区上次发布时提交的 **服务器 / Job / 参数**会被记住，下次打开弹框自动回显
-  （浏览器 `localStorage`）。配置文件缺失或解析/校验失败时视为未配置，不显示入口。
+  执行弹框的「发布」tab 只有三行：**项目 → 服务器 → Job**，随后是参数表单回显 →
+  提交构建 → 轮询状态（排队 → 构建中 → 结果，10 分钟超时）。
+  **环境不单独占一行**：项目配置里每个环境本来就对应一台服务器，所以环境选择就落在
+  【服务器】字段上 —— **下拉标签只显示插件里的服务器名**（不混入配置里的环境名，
+  避免两套命名交叉显示），选中服务器即切到该环境对应的 Job / 参数。
+  服务器按 **名称 / id / 完整地址 / 域名** 依次匹配配置里的 `server`（域名一级忽略协议、
+  端口与上下文路径）；下拉取「项目配置引用过的服务器 ∩ 插件已配置服务器」的交集。
+  上次发布的参数按项目记住，下次打开自动回显。
 - **入口显隐**：侧栏入口跟随「在菜单中显示」偏好（默认开启），可在 **设置 → Jenkins 配置**
   分区页或执行弹框「配置」tab 顶部切换。关闭后入口渲染 null（不占位），宿主设置分区页
   仍保留 **打开 Jenkins 配置** 按钮，弹框始终可达（两处同一个偏好源，改一处即时同步）。
 - **模型工具**（docs/develop/basic/tool）：`dsh_jenkins_build`、`dsh_jenkins_status`。
 - **配置**（docs/develop/basic/config）：Schemastery `Config` + 插件数据文件
   `$DSH_HOME/dsh-jenkins.json`（服务器 Token 以 `$DSH_HOME/dsh-jenkins.key`
-  机器绑定密钥加密，缓存明文；首次运行时自动从旧版 `settings.yaml` 的
-  `dsh-jenkins` 命名空间一次性迁移并清空旧数据）。
+  机器绑定密钥加密，缓存明文）；项目配置是独立文件
+  `$DSH_HOME/dsh-jenkins-map.json`（明文，可直接编辑）。首次运行时自动从旧版
+  `settings.yaml` 的 `dsh-jenkins` 命名空间一次性迁移并清空旧数据；旧版写在
+  `dsh-jenkins.json` 的 `projects` 字段也会自动迁到新文件（只补缺失）。
 - **打包**（docs/develop/basic/publish）：`dsh.bundle` + `dsh.client`(web) manifest。
 
 ## 文件结构
 
 ```
-├── src/host/*.ts       # 宿主半边源码：index.ts（入口）、jenkins.ts（curl 核心）、ops.ts（op 分发）、workspace-config.ts、types.ts
-├── src/client/*.tsx    # 浏览器半边源码（React TSX 组件）：设置页、底部入口、执行弹框、历史弹框
+├── src/host/*.ts       # 宿主半边源码：index.ts（入口）、jenkins.ts（curl 核心）、ops.ts（op 分发）、project-map.ts（项目配置文件）、projects.ts（归一化/合并）、workspace-config.ts、types.ts
+├── src/client/*.tsx    # 浏览器半边源码（React TSX 组件）：设置页、底部入口、发布弹框、项目配置弹框、历史弹框
 ├── lib/index.js        # 宿主半边构建产物（tsdown，ESM），提交 git 以支持 git 安装
 ├── lib/client.js       # 浏览器半边构建产物（tsdown → __ModuleLoader__ 工厂），提交 git
 ├── lib/types/          # 类型声明（tsc -b 生成）
-├── scripts/            # verify-client.mjs（模拟宿主 seed 表校验产物）
+├── scripts/            # verify-client.mjs（模拟宿主 seed 表校验产物）+ 隔离测试
+├── examples/           # 示例配置：dsh-jenkins.json（工作区数组格式）、dsh-jenkins-map.json（集中 map）
 ├── tsdown.config.ts    # tsdown 构建配置（node half + client bundle banner 包装）
 ├── tsconfig.json       # solution：引用 tsconfig.host.json / tsconfig.client.json
 ├── cordis.patch.yml    # 组合包 patch：按包名引用插件行（无路径）
@@ -85,9 +98,86 @@ environments 参数）。`.json` 直接解析；`.js` / `.ts` 经 node 求值
 - 每个元素必填 `job`（Jenkins 任务路径，如 `build-app` 或 `folder/build-app`）与
   `server`（对应 设置 → Jenkins 里的服务器 name / id / 地址）。
 - `environments`（选填）：该发布目标的参数键值（布尔值渲染为勾选框，其余为文本框）。
-- 弹框服务器下拉取**配置引用过的服务器 ∩ 插件已配置服务器**的交集，选中后自动
-  预选该服务器对应的 `job`（不在 Jenkins 任务列表里则留空由用户选择）并回填参数；
-  交集为空时降级为显示全部服务器并提示。配置缺失或无效时视为未配置，不显示入口。
+- 这类文件现在是**发现式配置**：插件会把它读进 [项目配置](#项目配置dsh-jenkins-mapjson)，
+  以**工作区文件夹名**作为项目名（只补缺失，不覆盖已有项目）。「发布」tab 直接选该项目即可，
+  服务器 / Job / 参数都会按当前环境自动带出。
+
+## 项目配置（dsh-jenkins-map.json）
+
+一份配置集中管理所有项目：**项目名 → 发布目标数组**。每个环境可选带一个
+**`name` 显示名**（如 `uat环境` / `prod灰度` / `prod环境`），**环境数量不限**
+（第 1 项为默认环境，通常写 UAT）；留空时界面按下标回退显示 `UAT` / `生产` / `环境 N`。
+元素结构与工作区配置文件同构，可直接互相搬运：
+
+```json
+{
+  "health-check-ui": [
+    {
+      "name": "uat环境",
+      "job": "system3_Front_docker3",
+      "server": "https://dev-jenkins-tx.whale-plus.com",
+      "environments": {
+        "project": "health-check-ui",
+        "branch": "uat5",
+        "NodeVersion": "v24.12.0",
+        "INSTALL_COMMAND_ACTIVE": "pnpm i --registry=https://repo.huaweicloud.com/repository/npm/",
+        "BUILD_COMMAND_ACTIVE": "pnpm build:uat"
+      }
+    },
+    {
+      "name": "prod灰度",
+      "job": "pro_system3_Front_docker3_gray",
+      "server": "https://jenkins-tx.whale-plus.com",
+      "environments": {
+        "project": "health-check-ui",
+        "branch": "release/gray",
+        "NodeVersion": "v24.12.0",
+        "BUILD_COMMAND_ACTIVE": "pnpm build:gray"
+      }
+    },
+    {
+      "name": "prod环境",
+      "job": "pro_system3_Front_docker3",
+      "server": "https://jenkins-tx.whale-plus.com",
+      "environments": {
+        "project": "health-check-ui",
+        "branch": "master5",
+        "NodeVersion": "v24.12.0",
+        "BUILD_COMMAND_ACTIVE": "pnpm build:prod"
+      }
+    }
+  ]
+}
+```
+
+- **存储位置**：独立文件 **`$DSH_HOME/dsh-jenkins-map.json`**（裸 map，无包装层，
+  明文；缺失时按空 map 处理，损坏时备份 `.bak` 后按空处理）。旧版把项目配置写在
+  `dsh-jenkins.json` 的 `projects` 字段，首次启动会自动迁到新文件（只补缺失）。
+- **name（环境显示名）**：选填；写空串等于不写（不会落 `"name": ""`）。
+  发布时它出现在【服务器】下拉标签与「本机记录」里，一眼看出这次发的是哪个环境。
+- **环境数量不限**：一个项目可以有任意多个发布目标（UAT / 灰度 / 生产 / 海外…），
+  数组顺序即显示顺序，第 1 项为默认环境。
+- **发现式配置**：打开「配置」/「发布」tab 时会扫描**所有已打开工作区**根目录的
+  `dsh-jenkins.json/js/ts`，以**文件夹名**作为项目名合并进 map ——
+  **默认只补缺失、不覆盖已有项目**；手改过的同名项目不会被冲掉。
+  需要按工作区里的最新配置更新时，在弹框底部勾选「覆盖同名项目」再点「重新发现」。
+- **编辑**：「配置」tab 一行的**项目配置**（`dsh-jenkins-map.json · N 个项目`）点
+  「编辑 map」打开弹框：
+  - **表单**：项目列表，每个环境一行 = 环境名（选填，placeholder 显示回退名）+ Job +
+    服务器 + 「N 项参数」（点开编辑参数键值对，值可指定文本·数字·布尔）+ 逐行删除；
+    「添加环境」不设上限，可增删项目 / 环境 / 参数；
+  - **JSON**：整个 map 的 JSON 直接编辑（可整段粘贴你自己的配置），「应用 JSON」写回表单。
+- **server 写法与匹配**：可写服务器**名称 / id / 完整地址 / 纯域名**；与 设置 → Jenkins
+  里配置的服务器按 **名称 → id → 完整地址（去尾部斜杠）→ 域名** 依次匹配 ——
+  域名一级忽略协议、端口与上下文路径（`http://jenkins-tx.example.com:8080/jenkins`
+  与配置里的 `https://jenkins-tx.example.com` 视为同一台）。一台都没匹配上时，发布 tab
+  在服务器行下方给出提示，下拉退化为全部服务器。
+- **一键发布**：「发布」tab 的**项目下拉**列出 map 里的项目；选中后**环境由【服务器】下拉
+  直接切换**（下拉标签就是插件里的服务器名，不显示配置里的环境名），Job 与参数随该环境的
+  发布目标自动带出，直接「提交构建」。发布记录按「项目配置：项目名」归组在「本机记录」tab
+  （可按该项目筛选 / 清空），每条记录还会标出发布的环境名。
+- **手工编辑**：文件本身就是 map，可直接用编辑器打开改；保存后回到界面即生效
+  （每次读取都重新解析文件）。
 
 ## 安装
 
@@ -169,7 +259,9 @@ pnpm run check         # 全仓 TypeScript 类型检查（tsc -b）
 pnpm run build         # 修改源码后重建两半产物（tsc -b && tsdown）
 pnpm run watch         # tsdown 监听模式（改 src/client 自动重建）
 pnpm run verify        # 模拟宿主 seed 表校验 lib/client.js 可加载
-pnpm run test          # 隔离测试：curl -D 输出解析（含代理 CONNECT 隧道块）+ 失败日志
+pnpm run test          # 隔离测试：curl -D 输出解析（含代理 CONNECT 隧道块）+ 失败日志 + 参数解析 + 项目配置
+pnpm run test:params   # 参数解析：内置类型 / uno-choice / Extended Choice / 构建页选项兜底
+pnpm run test:store    # 数据文件往返：token 加密 / 迁移 / 保留 Token 语义
 ```
 
 - 宿主半边源码在 `src/host/`，浏览器半边在 `src/client/`（构建入口
@@ -178,6 +270,29 @@ pnpm run test          # 隔离测试：curl -D 输出解析（含代理 CONNECT
   `window.__ModuleLoader__.load` 工厂包装（无需手写 wrap 脚本）；
 - 构建产物外部依赖（`react`、`@deepseek-ai/dsh-client-ui-primitives` 等）保持
   external，运行时解析自宿主模块表（seed）。
+
+## 任务参数识别
+
+「发布」tab 的参数表单按 Jenkins 服务端的参数定义渲染：
+
+| 服务端类型 | 界面 |
+| --- | --- |
+| `StringParameterDefinition` / uno-choice 动态引用 | 单行文本 |
+| `TextParameterDefinition` | 多行文本 |
+| `BooleanParameterDefinition` | 勾选框 |
+| `PasswordParameterDefinition` / `CredentialsParameterDefinition` / `FileParameterDefinition` | 密码框 / 文本框 |
+| `ChoiceParameterDefinition`（classic）、uno-choice `ChoiceParameter` / `CascadeChoiceParameter`、Extended Choice 单选 | 可搜索下拉 |
+| Extended Choice 多选 / uno-choice `MultiSelectParameter` | 勾选列表（按分隔符拼接提交） |
+
+- **脚本生成的选项**（Active Choices / uno-choice 的 `ChoiceParameter`、`CascadeChoiceParameter`）在
+  REST `/api/json` 里只有 `_class` + 默认值，选项要渲染时才由 Groovy 算出来。这类参数会**自动回落到
+  构建页 HTML**（`job/<path>/build`）解析 `<select>` 的选项 —— 因此 `project` 这种下拉能正确列出
+  全部项目；解析不到时降级为文本框并在表单里给出提示，不会出现「空下拉框」。
+- **默认值**同时兼容 `defaultValue`（内置类型）与 `defaultParameterValue.value`（插件类型，
+  如 uno-choice），因此像 `project=boss_backend` 这样的默认值会正确回填。
+- **分隔行**：uno-choice 的 `DynamicReferenceParameter`（`name` 为空）不会变成空字段 ——
+  纯横线的一律丢弃；带文字的渲染成虚线条备注。
+- 同名参数只保留第一个；未识别的类型按文本处理。
 
 ## 失败排查（日志）
 
@@ -226,6 +341,9 @@ pnpm run test          # 隔离测试：curl -D 输出解析（含代理 CONNECT
 - 浏览器↔宿主：默认走 `webServer` 注册的 `/dsh-jenkins/api`（fetch POST JSON → `{ ok, value }`
   信封，带信任围栏）；老宿主自动回退命令通道 `ctx.remote.commands.execute(sessionId, '/dsh-jenkins <json>')`。
   宿主错误带 `code`，客户端按语言本地化（未覆盖的兜底显示原文）。
+- 项目配置的 op 只有三个：`mapLoad`（读 + 自动发现只补缺失）、`mapSave`（整体替换，允许清空）、
+  `mapDiscover`（显式重新发现，可选覆盖同名）；`workspaceConfig` / `configParseContent` /
+  `workspaceTrigger` 仍在宿主保留（命令通道可用），但界面已不再暴露文件选择器路径。
 - peerDependencies（`@deepseek-ai/cordis`、`dsh-tools`、`schemastery`、`dsh-settings`、
   `dsh-commands`、`dsh-session`、`dsh-api-remotes`、client-runtime/ui-slots/ui-settings/
   cordis-client-runner、`react`）由宿主安装时解析。

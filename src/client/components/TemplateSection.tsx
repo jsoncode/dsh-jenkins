@@ -124,6 +124,7 @@ export function TemplateSection({ run, sessionId, cwd, workspaces }: TemplateSec
         />
       </div>
       <div className="dshj-hint">{t('templateHint')}</div>
+      <div className="dshj-hint">{t('templateCentralHint')}</div>
       {saveError ? <div className="dshj-err" style={{ margin: '0 0 8px' }}>{saveError}</div> : null}
       <div className="dshj-code-head">
         <span className="dshj-code-file">{filename}</span>

@@ -1,7 +1,8 @@
 /**
  * dsh-jenkins —— 操作分发（命令与模型工具共用）：runOp 全部分支。
  *
- * 分支：workspaceConfig / configParseContent / workspaceTrigger / saveTemplate / list / save / delete / test /
+ * 分支：mapLoad / mapSave / mapDiscover / workspaceConfig / configParseContent /
+ * workspaceTrigger / saveTemplate / list / save / delete / test /
  * jobs / jobDetail / jobHistory / trigger / queueStatus / buildStatus / buildLog / cancel /
  * updateCheck / pluginUpdateStart / pluginUpdateStatus。
  */
@@ -17,17 +18,26 @@ import {
   jobPath,
   jobSegments,
   normalizeBase,
+  parseBuildPageChoices,
 } from './jenkins.ts'
 import { loadWorkspaceConfig, parseConfigFromContent } from './workspace-config.ts'
+import { mergeMissingProjects, mergeProjectMaps, normalizeProjectMap, projectNameFromFilename } from './projects.ts'
+import { MAP_FILE } from './project-map.ts'
 import { checkPluginUpdate } from './update.ts'
 import { getPluginUpdateStatus, startPluginUpdate } from './plugin-update.ts'
-import type { FsService, HttpResponse, OpRequest, OpResult, PublicServer, ServerConfig, ShellService } from './types.ts'
+import type { FsService, HttpResponse, JenkinsParamDef, OpRequest, OpResult, ProjectConfigMap, ProjectTarget, PublicServer, ServerConfig, ShellService } from './types.ts'
 
 export interface OpsDeps {
   ctx: HostCtxLike
   readServers(): ServerConfig[]
   writeServers(servers: ServerConfig[]): Promise<void>
   findServer(nameOrIdOrUrl: string): ServerConfig | undefined
+  /** 读取集中式项目配置（独立文件 $DSH_HOME/dsh-jenkins-map.json）。 */
+  readMap(): Promise<ProjectConfigMap>
+  /** 写入集中式项目配置（整体替换）。 */
+  writeMap(map: ProjectConfigMap): Promise<void>
+  /** 项目配置文件绝对路径（界面展示 / 日志用）。 */
+  mapPath(): string
   /** 读取浏览器缓存（$DSH_HOME/dsh-jenkins.json 的 cache 字段）。 */
   readCacheJson(): Record<string, unknown>
   /** 写入浏览器缓存（整体替换）。 */
@@ -36,10 +46,102 @@ export interface OpsDeps {
   storeReady?: Promise<void>
 }
 
+/** 解析请求里的工作区路径列表（去空、去重、保持顺序）。 */
+function readCwds(req: OpRequest): string[] {
+  const raw = Array.isArray(req.cwds) ? (req.cwds as unknown[]) : []
+  const out: string[] = []
+  for (const item of raw) {
+    const cwd = String(item || '').trim()
+    if (cwd && out.indexOf(cwd) === -1) out.push(cwd)
+  }
+  return out
+}
+
+/**
+ * 发现式配置：扫描各工作区根目录的 dsh-jenkins.{json,js,ts}（数组格式），
+ * 以**文件夹名**作为项目名，元素转成集中配置的文件形状（parameters → environments）。
+ * 单个工作区失败不影响其它工作区，逐条返回结果供界面提示。
+ */
+async function discoverFromWorkspaces(
+  fsService: FsService,
+  shell: ShellService,
+  cwds: string[],
+): Promise<{ discovered: ProjectConfigMap; results: Array<Record<string, unknown>> }> {
+  const discovered: ProjectConfigMap = {}
+  const results: Array<Record<string, unknown>> = []
+  for (const cwd of cwds) {
+    const trimmed = cwd.replace(/[\\/]+$/, '')
+    const name = trimmed.replace(/^.*[\\/]/, '') || projectNameFromFilename('')
+    try {
+      const config = await loadWorkspaceConfig(fsService, shell, cwd)
+      if (config === null) {
+        results.push({ cwd, ok: false, reason: 'not-found' })
+        continue
+      }
+      // 工作区配置内部形状（parameters）→ 集中配置文件形状（environments）；name 一起带过去
+      discovered[name] = config.entries.map((en) => {
+        const target: ProjectTarget = { job: en.job, server: en.server, environments: en.parameters || {} }
+        const envName = String(en.name || '').trim()
+        if (envName) target.name = envName
+        return target
+      })
+      results.push({ cwd, name, ok: true, count: config.entries.length, file: config.file || '' })
+    } catch (e) {
+      results.push({ cwd, ok: false, reason: e instanceof Error ? e.message : String(e) })
+    }
+  }
+  return { discovered, results }
+}
+
 const maskToken = (t: string): string => {
   if (!t) return ''
   if (t.length <= 6) return '••••••'
   return t.slice(0, 2) + '••••' + t.slice(-2)
+}
+
+/**
+ * 补齐「脚本生成的选项」：uno-choice（Active Choices）/ Cascade / Extended Choice 的选项是
+ * 渲染时才由脚本算出来的，REST `/api/json` 只给 `_class` + 默认值。
+ * 这类参数（choice 但 choices 为空）回落到**构建页 HTML**（`job/<path>/build`）解析
+ * `<select>` 的 option 列表；拿不到时把该参数降级为文本输入，避免出现「空下拉框」。
+ *
+ * 只在确实存在这类参数时才多发一次请求；失败一律静默降级（不影响其它参数与发布流程）。
+ */
+async function resolveDynamicChoices(
+  ctx: HostCtxLike,
+  server: ServerConfig,
+  segs: string[],
+  params: JenkinsParamDef[],
+  jobUrl: string,
+): Promise<JenkinsParamDef[]> {
+  const pending = params.filter((p) => p.type === 'choice' && (p.choices === null || p.choices.length === 0))
+  if (pending.length === 0) return params
+  let pageChoices: Record<string, { choices: string[]; multiSelect: boolean; defaultValue: string }> = {}
+  try {
+    // 构建页（参数表单）；jobUrl 来自 job detail，可直接复用其路径。
+    // 注意：Jenkins 对 GET `/build` 常回 405，**但正文就是参数表单**（含渲染好的 <select>），
+    // 因此只要不是 5xx 且正文非空就尝试解析 —— 解析不到内容时下面的降级逻辑照常生效。
+    const path = String(jobUrl || '').trim() !== ''
+      ? String(jobUrl).replace(/^https?:\/\/[^/]+/i, '').replace(/\/+$/, '') + '/build'
+      : jobPath(segs) + '/build'
+    const res = await jenkinsRequest(ctx, server, path, { headers: { accept: 'text/html' }, op: 'jobDetail' })
+    if (res.status < 500 && res.body) pageChoices = parseBuildPageChoices(res.body)
+  } catch { /* 构建页取不到：下面按降级处理 */ }
+  return params.map((p) => {
+    if (p.type !== 'choice' || (p.choices !== null && p.choices.length > 0)) return p
+    const page = pageChoices[p.name]
+    if (page && page.choices.length > 0) {
+      return {
+        ...p,
+        choices: page.choices,
+        // 页面上的 selected 比 REST 的默认值更可信（脚本默认值只有渲染后才定）
+        defaultValue: page.defaultValue !== '' ? page.defaultValue : p.defaultValue,
+        ...(page.multiSelect || p.multiSelect ? { multiSelect: true } : {}),
+      }
+    }
+    // 解析不到选项：降级为文本输入（用户仍可手填），避免界面出现空下拉框
+    return { ...p, type: 'string', choices: null, dynamic: true }
+  })
 }
 
 const publicServer = (s: ServerConfig): PublicServer => ({
@@ -59,7 +161,7 @@ export const errCodeOf = errorCodeOf
 export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
   // 等待数据文件初始化完成（首次加载或旧数据迁移），避免操作读到空镜像。
   if (deps.storeReady) await deps.storeReady
-  const { ctx, readServers, writeServers, findServer } = deps
+  const { ctx, readServers, writeServers, findServer, readMap, writeMap } = deps
   const op = req && req.op
 
   if (op === 'workspaceConfig') {
@@ -98,6 +200,63 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
       console.error('[dsh-jenkins] configParseContent error', e)
       return { ok: false, code: errCodeOf(e), error: e instanceof Error ? e.message : String(e) }
     }
+  }
+
+  /* ── 集中式项目配置（$DSH_HOME/dsh-jenkins-map.json）────────────────────────
+   * 数据 = 项目名 → 发布目标数组（{ job, server, environments }）。
+   * 发现式配置：工作区根目录的 dsh-jenkins.{json,js,ts}（数组格式）以**文件夹名**
+   * 作为项目名合并进 map；默认只补缺失，不覆盖用户已有项目。
+   * ──────────────────────────────────────────────────────────────────────── */
+
+  if (op === 'mapLoad') {
+    // 打开界面时调用：读 map，顺带把已打开工作区里新出现的配置发现进来（只补缺失）。
+    const cwds = readCwds(req)
+    const map = await readMap()
+    const base = { ok: true, map, file: MAP_FILE, path: deps.mapPath(), added: [] as string[], results: [] as Array<Record<string, unknown>> }
+    if (cwds.length === 0) return base
+    const fsService = ctx.get('fs') as FsService | undefined
+    const shell = ctx.get('shell') as ShellService | undefined
+    // 发现依赖 fs/shell：不可用时仍返回已读到的 map（界面照常可用，只是没有新发现）
+    if (fsService === undefined || shell === undefined) return { ...base, discoverError: 'fs-missing' }
+    const { discovered, results } = await discoverFromWorkspaces(fsService, shell, cwds)
+    const merged = mergeMissingProjects(map, discovered)
+    if (merged.added.length > 0) {
+      await writeMap(merged.map)
+      console.log('[dsh-jenkins] discovered projects →', merged.added.join(', '))
+    }
+    return { ...base, map: merged.map, added: merged.added, results }
+  }
+
+  if (op === 'mapSave') {
+    // 项目配置弹框保存：整体替换 map（允许清空为 {}）。
+    let map: ProjectConfigMap
+    try {
+      map = normalizeProjectMap(req.map, { allowEmpty: true })
+    } catch (e) {
+      return { ok: false, code: 'project-invalid', error: e instanceof Error ? e.message : String(e) }
+    }
+    await writeMap(map)
+    return { ok: true, map, file: MAP_FILE, path: deps.mapPath() }
+  }
+
+  if (op === 'mapDiscover') {
+    // 「重新发现」：显式重新扫描工作区（overwrite=true 时用工作区配置覆盖同名项目）。
+    const cwds = readCwds(req)
+    if (cwds.length === 0) return { ok: false, code: 'cwd-missing', error: 'Missing workspace paths' }
+    const fsService = ctx.get('fs') as FsService | undefined
+    const shell = ctx.get('shell') as ShellService | undefined
+    if (fsService === undefined || shell === undefined) {
+      return { ok: false, code: 'fs-missing', error: 'fs/shell service unavailable' }
+    }
+    const overwrite = req.overwrite === true
+    const { discovered, results } = await discoverFromWorkspaces(fsService, shell, cwds)
+    const current = await readMap()
+    const names = Object.keys(discovered)
+    const added = names.filter((n) => !(n in current))
+    const updated = overwrite ? names.filter((n) => n in current) : []
+    const map = overwrite ? mergeProjectMaps(current, discovered) : mergeMissingProjects(current, discovered).map
+    if (added.length > 0 || updated.length > 0) await writeMap(map)
+    return { ok: true, map, file: MAP_FILE, path: deps.mapPath(), added, updated, results }
   }
 
   if (op === 'workspaceTrigger') {
@@ -348,6 +507,7 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
       lastBuild?: { number?: number; building?: boolean; result?: string | null }
       property?: Array<Record<string, unknown>>
     }
+    const params = extractParams(data.property)
     return {
       ok: true,
       name: data.name || '',
@@ -356,7 +516,7 @@ export async function runOp(deps: OpsDeps, req: OpRequest): Promise<OpResult> {
       nextBuildNumber: data.nextBuildNumber || null,
       url: data.url || '',
       lastBuild: data.lastBuild ? { number: data.lastBuild.number, building: !!data.lastBuild.building, result: data.lastBuild.result || null } : null,
-      params: extractParams(data.property),
+      params: await resolveDynamicChoices(ctx, s, segs, params, data.url || ''),
       segments: segs,
     }
   }

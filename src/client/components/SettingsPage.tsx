@@ -1,11 +1,18 @@
 /**
- * dsh-jenkins —— 设置 → Jenkins 配置页：服务器管理（settings.section）。
- * 新增 / 编辑服务器在独立弹框（ServerEditorModal）中操作，本页只负责列表与增删入口。
+ * dsh-jenkins —— 设置 → 「配置」tab：服务器管理 + 项目配置入口。
+ *
+ * 版面刻意保持轻量：
+ * - **服务器**：列表 + 增删改（编辑在 ServerEditorModal 弹框里）+「配置模板」按钮；
+ * - **项目配置**：一行摘要（`dsh-jenkins-map.json · N 个项目`），编辑集中在
+ *   ProjectMapModal 弹框里 —— 内容大多由各工作区根目录的 dsh-jenkins.{json,js,ts}
+ *   自动发现合并而来，通常无需手工维护。
  */
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { t, tErr } from '../i18n.ts'
 import type { RunFn } from '../rpc.ts'
+import { projectOpError, sanitizeProjects, type ProjectConfigMap } from '../projects.ts'
+import { ProjectMapModal } from './ProjectMapModal.tsx'
 import { ServerEditorModal } from './ServerEditorModal.tsx'
 import type { PublicServer } from './ServerEditorModal.tsx'
 import { TemplateModal } from './TemplateModal.tsx'
@@ -21,7 +28,7 @@ export interface SettingsPageProps {
   sessionId: string
   /** 当前工作区（模板「保存到工作区」的默认目标根目录）。 */
   cwd?: string
-  /** 已打开的工作区列表（与统一弹框的 useWorkspaces 返回形状一致）；供模板弹框选择保存位置。 */
+  /** 已打开的工作区列表（与统一弹框的 useWorkspaces 返回形状一致）。 */
   workspaceItems?: Array<{ path?: string; sessionIds?: string[] }>
   onCountChange?: (count: number) => void
 }
@@ -33,6 +40,16 @@ export function SettingsPage({ run, sessionId, cwd, workspaceItems, onCountChang
   const [testResults, setTestResults] = useState<Record<string, TestResult>>({}) // 每台服务器的测试结果（显示在卡片名称后）
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [templateOpen, setTemplateOpen] = useState(false)
+  // 集中式项目配置（dsh-jenkins-map.json）：列表只显示一行摘要，编辑在弹框里
+  const [projectMap, setProjectMap] = useState<ProjectConfigMap>({})
+  const [mapPath, setMapPath] = useState('')
+  const [mapError, setMapError] = useState('')
+  const [mapOpen, setMapOpen] = useState(false)
+  // 工作区路径（去空去重）：作为「发现式配置」的扫描范围
+  const workspaces = useMemo(() => [...new Set((Array.isArray(workspaceItems) ? workspaceItems : [])
+    .map((w) => (w && typeof w.path === 'string' ? w.path : ''))
+    .filter((p): p is string => p !== ''))], [workspaceItems])
+  const workspacesKey = workspaces.join('\n')
 
   const load = () => {
     setLoading(true)
@@ -45,6 +62,23 @@ export function SettingsPage({ run, sessionId, cwd, workspaceItems, onCountChang
     }).catch(() => { }).finally(() => setLoading(false))
   }
   useEffect(() => { load() }, [])
+
+  // 读取项目配置：宿主顺带把已打开工作区里新出现的 dsh-jenkins 配置发现进来（只补缺失）
+  const loadMap = useCallback((): void => {
+    const cwds = workspacesKey ? workspacesKey.split('\n') : []
+    run(sessionId, { op: 'mapLoad', cwds }).then((r) => {
+      if (r && r.ok) {
+        setProjectMap(sanitizeProjects(r.map))
+        setMapPath(String(r.path || ''))
+        setMapError('')
+      } else {
+        setMapError(projectOpError(r, t('loading')))
+      }
+    }).catch((e) => setMapError(e instanceof Error ? e.message : String(e)))
+  }, [run, sessionId, workspacesKey])
+  useEffect(() => { loadMap() }, [loadMap])
+
+  const projectNames = Object.keys(projectMap)
 
   const openAdd = () => {
     setEditor({ open: true, server: null })
@@ -108,9 +142,7 @@ export function SettingsPage({ run, sessionId, cwd, workspaceItems, onCountChang
           run={run}
           sessionId={sessionId}
           cwd={cwd || ''}
-          workspaces={[...new Set((Array.isArray(workspaceItems) ? workspaceItems : [])
-            .map((w) => (w && typeof w.path === 'string' ? w.path : ''))
-            .filter((p): p is string => p !== ''))]}
+          workspaces={workspaces}
           onClose={() => setTemplateOpen(false)}
         />
       ) : null}
@@ -121,6 +153,18 @@ export function SettingsPage({ run, sessionId, cwd, workspaceItems, onCountChang
           server={editor.server}
           onSaved={() => load()} // 编辑保存后 host 已清除该服务器 verified，重新拉取列表
           onClose={closeEditor}
+        />
+      ) : null}
+      {mapOpen ? (
+        <ProjectMapModal
+          run={run}
+          sessionId={sessionId}
+          servers={servers}
+          workspaces={workspaces}
+          mapPath={mapPath}
+          initial={projectMap}
+          onSaved={(next) => { setProjectMap(next); setMapError('') }}
+          onClose={() => setMapOpen(false)}
         />
       ) : null}
       {loading ? <div className="dshj-empty">{t('loading')}</div>
@@ -164,6 +208,16 @@ export function SettingsPage({ run, sessionId, cwd, workspaceItems, onCountChang
             })}
           </div>
         )}
+      {/* 项目配置：一行摘要 + 编辑入口（内容 = 各工作区配置自动发现合并的结果） */}
+      <div className="dshj-divider" />
+      <div className="dshj-maprow" title={t('projectsHint')}>
+        <div className="dshj-maprow-main">
+          <div className="dshj-title">{t('projectsTitle')}</div>
+          <div className="dshj-maprow-meta">{'dsh-jenkins-map.json · ' + t('projectCount', { n: projectNames.length })}</div>
+        </div>
+        <button type="button" className="dshj-btn dshj-btn-small" onClick={() => setMapOpen(true)}>{t('editMap')}</button>
+      </div>
+      {mapError ? <div className="dshj-err">{mapError}</div> : null}
     </div>
   )
 }

@@ -1,0 +1,38 @@
+[
+  {
+    "name": "uat环境",
+    "job": "system3_Front_docker3",
+    "server": "https://dev-jenkins-tx.whale-plus.com",
+    "environments": {
+      "project": "health-check-ui",
+      "branch": "uat5",
+      "NodeVersion": "v24.12.0",
+      "INSTALL_COMMAND_ACTIVE": "pnpm i --registry=https://repo.huaweicloud.com/repository/npm/",
+      "BUILD_COMMAND_ACTIVE": "pnpm build:uat"
+    }
+  },
+  {
+    "name": "prod灰度",
+    "job": "pro_system3_Front_docker3_gray",
+    "server": "https://jenkins-tx.whale-plus.com",
+    "environments": {
+      "project": "health-check-ui",
+      "branch": "release/gray",
+      "NodeVersion": "v24.12.0",
+      "INSTALL_COMMAND_ACTIVE": "pnpm i --registry=https://repo.huaweicloud.com/repository/npm/",
+      "BUILD_COMMAND_ACTIVE": "pnpm build:gray"
+    }
+  },
+  {
+    "name": "prod环境",
+    "job": "pro_system3_Front_docker3",
+    "server": "https://jenkins-tx.whale-plus.com",
+    "environments": {
+      "project": "health-check-ui",
+      "branch": "master5",
+      "NodeVersion": "v24.12.0",
+      "INSTALL_COMMAND_ACTIVE": "pnpm i --registry=https://repo.huaweicloud.com/repository/npm/",
+      "BUILD_COMMAND_ACTIVE": "pnpm build:prod"
+    }
+  }
+]
