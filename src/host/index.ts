@@ -24,7 +24,6 @@ import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import Schema from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { Context } from '@deepseek-ai/cordis'
 import { isTrustedApiRequest } from './fence.ts'
 import { logFailure, logFilePath } from './log.ts'
@@ -126,10 +125,13 @@ export function apply(ctx: Context, config: { servers?: ServerConfig[] }) {
   // 旧版 settings 命名空间：必须在 apply 同步段注册（register 用 ctx.effect
   // 延迟登记，异步段注册后立刻 scope.update() 会因 effect 未 flush 而抛
   // "namespace is not registered"）。注册本身不写文档，仅迁移需要。
+  // 命名空间直接传字符串：settingsNamespace() 已在 dsh-settings 0.1.2-rc.1 移除
+  // （格式校验改为 provider 内部完成），它只是原样返回入参，直接用字符串与
+  // 新旧版本都兼容。
   let legacyScope: SettingsScope | null = null
   if (settings !== undefined) {
     try {
-      legacyScope = settings.register(settingsNamespace('dsh-jenkins'), LegacySettingsSchema, {
+      legacyScope = settings.register('dsh-jenkins', LegacySettingsSchema, {
         base: { serversJson: JSON.stringify(config.servers || []), cacheJson: '{}' },
       }) as SettingsScope
     } catch { /* 重复注册/校验失败：跳过迁移 */ }
