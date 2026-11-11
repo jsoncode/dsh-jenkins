@@ -12,7 +12,12 @@
  */
 import { defineConfig, type UserConfig } from 'tsdown'
 
-/** 宿主模块表（seed，与 @deepseek-ai/dsh-client-web 的 staticModules 一致）。 */
+/**
+ * 宿主模块表（seed，0.2.2-rc.1 宿主 staticModules 的子集）。
+ * 只保留代码真正 import 的模块（宁缺勿滥：未 import 的名字留着只是误导）；
+ * 0.1.x 时代的 dsh-client-web-react / dsh-client-ui-attachment /
+ * dsh-client-schema-form 已从宿主模块表消失，且本插件从未 import，全部移除。
+ */
 const SEED_MODULES = [
   'react',
   'react/jsx-runtime',
@@ -20,10 +25,6 @@ const SEED_MODULES = [
   'react-dom/client',
   '@deepseek-ai/cordis',
   '@deepseek-ai/dsh-client-ui-slots',
-  '@deepseek-ai/dsh-client-web-react',
-  '@deepseek-ai/dsh-client-ui-primitives',
-  '@deepseek-ai/dsh-client-ui-attachment',
-  '@deepseek-ai/dsh-client-schema-form',
 ]
 
 const nodeConfig: UserConfig = {

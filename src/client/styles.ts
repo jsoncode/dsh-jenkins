@@ -57,24 +57,28 @@ export const css = [
   '.dshj-form-divider{display:flex;align-items:center;gap:10px;margin:16px 0 6px}',
   '.dshj-form-divider::before,.dshj-form-divider::after{content:"";flex:1;height:0;border-top:1px dashed var(--dsw-alias-border-l3,#bbb)}',
   '.dshj-form-divider-text{font-size:12px;color:var(--dsw-alias-label-secondary,#888);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%}',
-  // 侧边栏底部入口：样式对齐 DSH 设置按钮（sidebar.settings 的 trigger）——
-  // 高 42px（窄栏 36px）、字号 14px/行高 22px、宽模式左对齐、图标 + 文字（仅宽模式显示文字）
-  '.dshj-footer-btn{box-sizing:border-box;cursor:pointer;width:calc(100% + 4px);height:42px;color:var(--dsw-alias-label-primary);background:transparent;border:none;border-radius:12px;flex:none;align-items:center;gap:8px;margin:4px -2px;padding:0 10px 0 8px;font-family:inherit;font-size:14px;line-height:22px;display:flex;overflow:hidden}',
-  '.dshj-footer-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}',
-  '.dshj-footer-btn-rail{border-radius:50%;justify-content:center;gap:0;width:36px;height:36px;margin:8px 0 10px;padding:0}',
-  // 显示【有更新】胶囊时（宽模式）：给按钮右侧补内边距，文字不再延伸到胶囊下方被覆盖
-  // （胶囊绝对定位于按钮右侧 right:10px，宽约 40px；60px 足够让出并留出呼吸间距）
-  '.dshj-footer-btn-has-update{padding-right:60px}',
-  '.dshj-footer-group{width:100%;min-width:0;position:relative}',
-  '.dshj-footer-rail-group{width:auto;display:flex;flex-direction:column;align-items:center}',
-  // 图标：28px 圆形 Jenkins 红底徽标（object-fit:contain 保持 SVG 比例居中，透明区透出红底）；
-  // pointer-events:none 使右键穿透到父按钮，图片不响应指针事件 —— 浏览器不再出现「保存图片」菜单
-  '.dshj-footer-logo{height:28px;width:28px;flex:none;display:block;object-fit:contain;background:color-mix(in srgb,#D33833 74%,transparent);border-radius:50%;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);pointer-events:none}',
-  '.dshj-footer-label{white-space:nowrap;overflow:hidden}',
-  // 按钮右侧任务状态小胶囊：宽模式绝对定位在按钮右侧垂直居中（按钮右侧空白区，不遮挡文字）；
-  // 窄栏（rail）无横向空间，改为堆叠在圆形图标下方居中
-  '.dshj-footer-caps{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:4px;z-index:2;pointer-events:none}',
-  '.dshj-footer-rail-group .dshj-footer-caps{position:static;transform:none;justify-content:center;margin-top:-4px}',
+  // ─── 设置弹框左侧菜单入口页（settings.section 内嵌渲染，0.2.2-rc.1 改版）───
+  // 入口不再放侧边栏左下角（sidebar.footer.action 注册已删除，原 footer 堆叠
+  // 的 :where 隔离规则随之废弃）；页面直接渲染在设置弹框内容列内，无蒙版 /
+  // 无固定宽高外壳，高度撑满内容列、内部滚动交给 .dshj-modal-body。
+  '.dshj-settings-section{display:flex;flex-direction:column;height:100%;min-height:480px;box-sizing:border-box;color:var(--dsw-alias-label-primary,#222);font-size:14px}',
+  // 标题行：logo 徽标 + 标题 / 当前工作区路径 + 任务状态胶囊 + 工作区选择器（窄面板自动换行）
+  '.dshj-section-head{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--dsw-alias-border-l1,#eee);flex:none;flex-wrap:wrap}',
+  '.dshj-section-title{display:flex;align-items:center;gap:10px;min-width:0;flex:1 1 auto}',
+  '.dshj-section-title-text{min-width:0}',
+  '.dshj-section-sub{font-size:12px;color:var(--dsw-alias-label-secondary,#888);margin-top:2px;word-break:break-all;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+  // Jenkins logo：28px 红底圆形徽标（与导航图标同款底色，object-fit 保持 SVG 比例）
+  '.dshj-logo-badge{height:28px;width:28px;flex:none;display:block;object-fit:contain;background:color-mix(in srgb,#D33833 74%,transparent);border-radius:50%;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);pointer-events:none}',
+  // 左侧菜单导航图标（settings.section.icon 组件，size 由宿主以 width/height 传入）
+  '.dshj-section-icon{display:block;flex:none;object-fit:contain;background:color-mix(in srgb,#D33833 74%,transparent);border-radius:50%;pointer-events:none}',
+  // 标题行右侧任务状态胶囊组（原 footer 按钮右侧，随入口迁入本页）
+  '.dshj-section-caps{display:inline-flex;align-items:center;gap:4px;flex:none}',
+  // 工作区选择器（设置页是全局页面，不天然跟随当前会话，故提供显式选择）
+  '.dshj-section-ws{display:flex;align-items:center;gap:8px;flex:0 1 380px;min-width:200px}',
+  '.dshj-section-ws-label{font-size:12px;font-weight:500;color:var(--dsw-alias-label-secondary,#666);flex:none}',
+  // 本页 tab 行沿用 .dshj-tabs 默认（横向内边距 + 下边框），无需弹框标题栏内的小 tab 变体
+  '.dshj-section-tabs{margin:0}',
+  // 任务状态小胶囊（本页标题行内使用；构建中 / 成功未读 / 有更新）：
   '.dshj-capsule{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 5px;border-radius:999px;font-size:10px;line-height:1;font-weight:700;font-variant-numeric:tabular-nums;box-sizing:border-box;white-space:nowrap}',
   // 构建中：GitHub Action 构建中的琥珀橙（深色文字保证对比度）
   '.dshj-capsule-building{color:#4a3500;background:#f0b429;border:1px solid color-mix(in srgb,#f0b429 60%,#fff)}',
@@ -82,21 +86,8 @@ export const css = [
   '.dshj-capsule-done{color:#fff;background:var(--dsw-alias-state-success-primary,#2a7d3c);border:1px solid color-mix(in srgb,var(--dsw-alias-state-success-primary,#2a7d3c) 75%,#fff)}',
   // 有更新：蓝色实心文字胶囊，位于状态胶囊组最右侧（registry 出现比本地更新的 dsh-jenkins 时显示）
   '.dshj-capsule-update{color:#fff;background:var(--dsw-alias-state-info-primary,#2563eb);border:1px solid color-mix(in srgb,var(--dsw-alias-state-info-primary,#2563eb) 75%,#fff);font-weight:600}',
-  // 更新胶囊点击热区：与胶囊等宽（视觉不变）、纵向撑满 footer 按钮高度，放大点击区域；
-  // 外层胶囊容器 pointer-events:none（点击穿透给下方配置按钮），热区自身恢复 auto ——
-  // 点击热区任意位置触发更新确认，不再穿透到配置按钮
-  '.dshj-capsule-wrap{display:inline-flex;align-items:center;justify-content:center;width:auto;height:42px;padding:0;margin:0;border:none;background:transparent;color:inherit;font:inherit;cursor:pointer;pointer-events:auto;flex:none;box-sizing:border-box;border-radius:999px}',
-  '.dshj-footer-rail-group .dshj-capsule-wrap{height:24px}',
-  // 宿主 sidebar.footer.action 列表容器：slots 渲染器为每个插槽输出稳定的
-  // [data-slot] 锚点（display:contents，不参与布局），其父容器即宿主的 footer
-  // 行容器。宿主默认 flex 行布局会把多个插件注册的入口挤在一行（本插件按钮宽
-  // 度 100%，会横向溢出），因此改为纵向堆叠。
-  //
-  // 作用域：选择器以**本插件自己的** .dshj-footer-group 为锚点 —— 宿主容器里
-  // 没有本插件入口时不可能命中，因此不会影响宿主任何其它 DOM；外层 :where()
-  // 把优先级压到 0，宿主随时可以覆盖。这是本插件唯一一条不带 dshj- 前缀的
-  // 声明，其余样式全部以 .dshj- 作用域限定。
-  ':where(div:has(> [data-slot="sidebar.footer.action"] > .dshj-footer-group)){flex-direction:column}',
+  // 更新胶囊点击热区：与胶囊等宽（视觉不变），整块可点击（点击打开更新确认弹框）。
+  '.dshj-capsule-wrap{display:inline-flex;align-items:center;justify-content:center;width:auto;height:18px;padding:0 2px;margin:0;border:none;background:transparent;color:inherit;font:inherit;cursor:pointer;pointer-events:auto;flex:none;box-sizing:border-box;border-radius:999px}',
   // 弹框
   // 弹框遮罩与弹框本体：半透明 + 高斯模糊（毛玻璃），背景内容隐约可见而非被完全覆盖
   '.dshj-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.32);z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px;pointer-events:auto;-webkit-backdrop-filter:blur(12px) saturate(1.2);backdrop-filter:blur(12px) saturate(1.2)}',
@@ -296,23 +287,6 @@ export const css = [
   '.dshj-link:hover{text-decoration:underline}',
   // 设置页
   '.dshj-settings{display:flex;flex-direction:column;gap:12px}',
-  // 「在菜单中显示」滑动开关行（宿主设置分区页顶部 + 弹框「配置」tab 顶部同一组件）
-  '.dshj-pref{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2,#ddd);border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-bg-base,#fff) 60%,transparent)}',
-  '.dshj-pref-text{min-width:0;display:flex;flex-direction:column;gap:2px}',
-  '.dshj-pref-label{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary,#222)}',
-  '.dshj-pref-desc{font-size:12px;color:var(--dsw-alias-label-secondary,#888)}',
-  // 滑动开关：与 dsh-get-balance .dshb-switch 完全同款 —— 关闭态轨道取
-  // label-primary 42%（比 label-secondary 30% 明显更深，与白色圆心对比清晰），
-  // 开启态实心绿 #16a34a，圆心 18px 带极细内描边 + 投影，focus-visible 用品牌色光晕。
-  '.dshj-switch{position:relative;display:inline-block;width:40px;height:22px;padding:0;border:none;border-radius:999px;background:color-mix(in srgb,var(--dsw-alias-label-primary,#222) 42%,transparent);cursor:pointer;flex:none;transition:background-color .2s}',
-  '.dshj-switch:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary,#222) 55%,transparent)}',
-  '.dshj-switch:focus-visible{outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-brand-primary,#1668e3) 18%,transparent)}',
-  '.dshj-switch-on{background:#16a34a}',
-  '.dshj-switch-on:hover{background:#117f39}',
-  '.dshj-switch-knob{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:inset 0 0 0 1px rgba(0,0,0,.06),0 1px 4px rgba(0,0,0,.35);transition:left .2s cubic-bezier(.25,.8,.35,1)}',
-  '.dshj-switch-on .dshj-switch-knob{left:20px}',
-  // 宿主设置分区页里的「打开插件」按钮行
-  '.dshj-pref-open{display:flex;gap:8px}',
   '.dshj-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}',
   '.dshj-title{font-size:14px;font-weight:600}',
   '.dshj-list{display:flex;flex-direction:column;gap:8px}',

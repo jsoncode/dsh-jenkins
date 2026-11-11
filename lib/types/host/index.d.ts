@@ -5,9 +5,8 @@
  *   （服务器 Token 以 dsh-jenkins.key 机器绑定密钥 AES-256-GCM 加密；缓存明文）；
  *   集中式项目配置是独立文件 $DSH_HOME/dsh-jenkins-map.json（项目名 → 发布目标数组），
  *   各工作区根目录的 dsh-jenkins.{json,js,ts} 作为「发现式配置」自动合并进去。
- *   settings 命名空间仅用于一次性迁移旧版数据：首次运行时若发现 settings.yaml
- *   中的 dsh-jenkins 命名空间有数据，自动提取到数据文件并清空旧命名空间，
- *   之后不再读写宿主默认设置；
+ *   0.2.2-rc.1 起 settings 服务重构（旧 settings.yaml 由宿主框架自行迁移），
+ *   本插件不再读写宿主设置文档，数据文件为唯一持久化源；
  * - `/dsh-jenkins/api` HTTP 路由（webServer 注册 + 信任围栏）：浏览器半边（设置页 /
  *   执行弹框 / 后台轮询）经 fetch 调用，参数为 JSON（{ op: 'list|save|delete|test|jobs|jobDetail|jobHistory|trigger|queueStatus|buildStatus|...' }），
  *   结果以 JSON 信封回传。请求不进入对话命令通道，页面不会出现 command 节点 / 调试卡片；

@@ -12,18 +12,23 @@
 - **日志与运维**：随时查看构建日志，支持停止 / 取消构建
 - **中英双语**：界面跟随主界面语言切换
 
-支持设置页、工作区入口与模型工具三种操作方式。
+自 DSH 0.2.2-rc.1 起，UI 入口统一收进设置弹框左侧菜单（另提供模型工具）。
 
 [English](README.md)
 
 ## 预览
 
-设置页、工作区入口与执行/历史弹框的截图：见 [preview.md](preview.md)。
+设置页入口与发布 / 记录 / 二级弹框的截图：见 [preview.md](preview.md)（截图为 0.2.2 改版前布局）。
 
 ## 功能
 
-- **设置 → Jenkins 配置** 页（`settings.section`）：多服务器增删改查、测试连接、
-  跳过 TLS 校验。仅 **服务器地址** 与 **Token** 必填（用户名为选填，缺省 `admin`）。
+- **设置 → Jenkins 配置** 页（`settings.section`，唯一的 UI 入口）：设置弹框左侧菜单
+  新增「Jenkins 配置」一格（含 Jenkins logo 导航图标），页面内嵌四个 tab ——
+  **发布 / 配置 / 本机记录 / 历史记录**。标题行右侧是任务状态胶囊（构建中 / 成功未读 /
+  「有更新」新版本提示）与**工作区选择器**（默认跟随当前会话所属工作区，可手动切换）。
+  「配置」tab 支持多服务器增删改查、测试连接、跳过 TLS 校验，仅 **服务器地址** 与
+  **Token** 必填（用户名为选填，缺省 `admin`）。构建日志 / 服务器编辑 / 项目配置 /
+  更新日志等二级弹框以视口顶层蒙版渲染，不受设置面板裁切。
 - **项目配置**（`$DSH_HOME/dsh-jenkins-map.json`）：所有项目的发布目标集中在一个文件里
   —— 项目名 → 发布目标数组，元素结构与工作区配置文件完全一致
   （`{ name?, job, server, environments }`）。每个环境可用 **`name` 起显示名**
@@ -32,10 +37,7 @@
   （以文件夹名为项目名，只补缺失、不覆盖已有项目），因此通常无需手工维护；
   需要手改时，「配置」tab 的**项目配置**一行点「编辑 map」即可（表单 / JSON 双模式）。
   详见下文「[项目配置（dsh-jenkins-map.json）](#项目配置dsh-jenkins-mapjson)」。
-- **工作区入口**（`sidebar.footer.action`）：侧边栏底部的一组按钮 —— **Jenkins logo 按钮**
-  （打开统一弹框）+ **历史按钮**（时钟图标，查看所有工作区最近 50 次发布记录，
-  可按工作区筛选，默认全部）。
-  执行弹框的「发布」tab 只有三行：**项目 → 服务器 → Job**，随后是参数表单回显 →
+- **发布 tab**（设置页内）：只有三行——**项目 → 服务器 → Job**，随后是参数表单回显 →
   提交构建 → 轮询状态（排队 → 构建中 → 结果，10 分钟超时）。
   **环境不单独占一行**：项目配置里每个环境本来就对应一台服务器，所以环境选择就落在
   【服务器】字段上 —— **下拉标签只显示插件里的服务器名**（不混入配置里的环境名，
@@ -43,15 +45,13 @@
   服务器按 **名称 / id / 完整地址 / 域名** 依次匹配配置里的 `server`（域名一级忽略协议、
   端口与上下文路径）；下拉取「项目配置引用过的服务器 ∩ 插件已配置服务器」的交集。
   上次发布的参数按项目记住，下次打开自动回显。
-- **入口显隐**：侧栏入口跟随「在菜单中显示」偏好（默认开启），可在 **设置 → Jenkins 配置**
-  分区页或执行弹框「配置」tab 顶部切换。关闭后入口渲染 null（不占位），宿主设置分区页
-  仍保留 **打开 Jenkins 配置** 按钮，弹框始终可达（两处同一个偏好源，改一处即时同步）。
 - **模型工具**（docs/develop/basic/tool）：`dsh_jenkins_build`、`dsh_jenkins_status`。
 - **配置**（docs/develop/basic/config）：Schemastery `Config` + 插件数据文件
   `$DSH_HOME/dsh-jenkins.json`（服务器 Token 以 `$DSH_HOME/dsh-jenkins.key`
   机器绑定密钥加密，缓存明文）；项目配置是独立文件
-  `$DSH_HOME/dsh-jenkins-map.json`（明文，可直接编辑）。首次运行时自动从旧版
-  `settings.yaml` 的 `dsh-jenkins` 命名空间一次性迁移并清空旧数据；旧版写在
+  `$DSH_HOME/dsh-jenkins-map.json`（明文，可直接编辑）。DSH 0.2.2-rc.1 起旧
+  `settings.yaml` 由宿主框架自行迁移，插件不再读写设置文档（数据文件缺失时以组合
+  入口 `config.servers` 播种）；旧版写在
   `dsh-jenkins.json` 的 `projects` 字段也会自动迁到新文件（只补缺失）。
 - **打包**（docs/develop/basic/publish）：`dsh.bundle` + `dsh.client`(web) manifest。
 
@@ -59,7 +59,7 @@
 
 ```
 ├── src/host/*.ts       # 宿主半边源码：index.ts（入口）、jenkins.ts（curl 核心）、ops.ts（op 分发）、project-map.ts（项目配置文件）、projects.ts（归一化/合并）、workspace-config.ts、types.ts
-├── src/client/*.tsx    # 浏览器半边源码（React TSX 组件）：设置页、底部入口、发布弹框、项目配置弹框、历史弹框
+├── src/client/*.tsx    # 浏览器半边源码（React TSX 组件）：设置页入口（settings.section 内嵌四 tab）、发布/记录 tab、项目配置等二级弹框
 ├── lib/index.js        # 宿主半边构建产物（tsdown，ESM），提交 git 以支持 git 安装
 ├── lib/client.js       # 浏览器半边构建产物（tsdown → __ModuleLoader__ 工厂），提交 git
 ├── lib/types/          # 类型声明（tsc -b 生成）
@@ -345,16 +345,16 @@ pnpm run test:store    # 数据文件往返：token 加密 / 迁移 / 保留 Tok
   `mapDiscover`（显式重新发现，可选覆盖同名）；`workspaceConfig` / `configParseContent` /
   `workspaceTrigger` 仍在宿主保留（命令通道可用），但界面已不再暴露文件选择器路径。
 - peerDependencies（`@deepseek-ai/cordis`、`dsh-tools`、`schemastery`、`dsh-settings`、
-  `dsh-commands`、`dsh-session`、`dsh-api-remotes`、client-runtime/ui-slots/ui-settings/
-  cordis-client-runner、`react`）由宿主安装时解析。
-- **未修改官方 deepseek-harness 项目**：全部能力走现有 slot（`sidebar.footer.action`、
-  `settings.section`、`shell.overlay`）与命令传输。
-- **样式隔离**：注入的样式表除一条刻意保留的例外，全部限定在 `.dshj-*` 作用域内 ——
-  `:where(div:has(> [data-slot="sidebar.footer.action"] > .dshj-footer-group)){flex-direction:column}`
-  用于把宿主 footer 容器从默认 flex 横排改为纵向堆叠（否则多个插件入口会被挤在一行）。
-  它只可能命中「容器内已存在本插件入口」的那一层，且外层 `:where()` 把优先级压到 0，
-  宿主随时可覆盖。动画名统一 `dshj-` 前缀，style 标签带 `data-plugin-css="dsh-jenkins/settings.css"`
-  标记；没有其它全局选择器，不写 `:root`/`body`/`*`，也不修改 body 行内样式。
+  `dsh-commands`、`dsh-session`、`dsh-api-remotes`、`dsh-client-ui-slots`、
+  `dsh-client-ui-settings`、`dsh-cordis-client-runner`、`react`）由宿主安装时解析，
+  版本与宿主 0.2.2-rc.1 精确对齐（cordis `~4.1.0`）。
+- **未修改官方 deepseek-harness 项目**：全部能力走现有 slot（`settings.section`、
+  `settings.section.icon`、`shell.overlay`、`conversation.chat.commandview`）与命令传输。
+- **样式隔离**：注入的样式表全部限定在 `.dshj-*` 作用域内，没有其它全局选择器，
+  不写 `:root`/`body`/`*`，也不修改 body 行内样式（0.2.2 改版前的
+  `:where(div:has(> [data-slot="sidebar.footer.action"] ...))` footer 堆叠例外随
+  左下角入口一起废弃）。动画名统一 `dshj-` 前缀，style 标签带
+  `data-plugin-css="dsh-jenkins/settings.css"` 标记。
 - **弹框配色**：与 dsh-get-balance 同一套 —— `rgba(0,0,0,.32)` 蒙版 + `blur(12px) saturate(1.2)`、
   `color-mix(bg-layer-1 78%)` 玻璃面板 + `border-l2` 细描边 + 14px 圆角、`border-l1` 头/脚分隔线、
   主按钮与选中 tab 用实心 `button-primary-fill`（半透明填充会把宿主单色主色 #0f1115 / #f9fafb

@@ -1,20 +1,23 @@
 /**
  * dsh-jenkins —— 浏览器半边插件主体（slots 注册）。
  *
- * 本文件不包含 __ModuleLoader__ 包装：构建为单文件 CJS 后由
- * scripts/wrap-client.mjs 包装成宿主工厂格式。外部依赖（react 等）在打包时
+ * 本文件不包含 __ModuleLoader__ 包装：产物由 tsdown banner/footer 生成
+ * window.__ModuleLoader__.load({ id, factory }) 工厂。外部依赖（react 等）在打包时
  * external，运行时经 factory 的 require 解析到宿主模块表（seed）。
  *
- * 入口结构（统一弹框）：
- * - sidebar.footer.action：「Jenkins 配置」按钮（位于 dsh 配置按钮上方），
- *   打开统一弹框；显隐跟随「在菜单中显示」偏好（默认开启）。右侧小胶囊展示
- *   构建状态汇总与「有更新」新版本提示（点击进入更新确认 → 更新日志弹框）；
- * - settings.section（dsh-jenkins）：宿主「设置 → Jenkins 配置」分区页 ——
- *   「在菜单中显示」开关 + 打开插件弹框的入口（footer 入口关闭后的唯一入口）；
- * - shell.overlay（dsh-jenkins-config）：统一弹框，四个 tab —— 发布 / 配置 / 本机记录 / 历史记录，
- *   分别承载原执行 Job 弹框、设置页、发布历史弹框、服务器真实构建记录的内容；
+ * 入口结构（DSH 0.2.2-rc.1 改版，入口不再放侧边栏左下角）：
+ * - settings.section（id 'dsh-jenkins'，order 100）：设置弹框左侧菜单新增一格，
+ *   页面内嵌原「Jenkins 配置」统一弹框的全部内容（发布 / 配置 / 本机记录 /
+ *   历史记录 四个 tab；不套 ModalPortal 外壳）；标题行右侧保留任务状态胶囊
+ *   （构建中 / 成功未读 / 「有更新」新版本提示，点击进入更新确认 → 更新日志弹框）；
+ * - settings.section.icon（同 id）：左侧菜单导航图标（Jenkins logo）；
  * - shell.overlay（dsh-jenkins-update）：插件更新流程弹框（确认更新 / 更新日志）；
- * - 原 launcher / history 两个独立 overlay 注册已移除。
+ * - 原 sidebar.footer.action 注册与 shell.overlay（dsh-jenkins-config）统一弹框
+ *   注册已移除（内容迁入设置页内嵌渲染）；构建日志 / 服务器编辑 / 项目模板等
+ *   二级弹框仍是 body 顶层蒙版（ModalPortal），不受设置面板裁切。
+ *
+ * settings.section 注册包在 ctx.slots.inject('settings.section', ...) 里：
+ * 该 slot 由宿主 sidebar.settings 项挂载后才存在，seat 存在才注册。
  */
 import type { ReactNode } from 'react';
 /** 浏览器侧插件上下文（宿主注入）。 */

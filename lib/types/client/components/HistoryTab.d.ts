@@ -2,7 +2,7 @@
  * dsh-jenkins —— 统一弹框「历史」tab：聚合所有工作区最近 50 次发布，可按工作区筛选
  * （默认全部）。进行中条目由全局轮询器实时回填结果。每条记录提供两个独立操作：
  * 「查看详情」打开构建日志弹框、「打开原始任务」在浏览器中跳转 Jenkins 页面。
- * 内容来自原「发布历史」弹框，去掉弹框外框，由 JenkinsConfigModal 提供容器。
+ * 内容来自原「发布历史」弹框，去掉弹框外框，由 SettingsSection（settings.section 页）提供容器。
  */
 import type { ReactNode } from 'react';
 import { type HistoryEntry, type StorageApi } from '../storage.ts';

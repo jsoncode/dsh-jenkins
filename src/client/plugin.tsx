@@ -1,20 +1,23 @@
 /**
  * dsh-jenkins —— 浏览器半边插件主体（slots 注册）。
  *
- * 本文件不包含 __ModuleLoader__ 包装：构建为单文件 CJS 后由
- * scripts/wrap-client.mjs 包装成宿主工厂格式。外部依赖（react 等）在打包时
+ * 本文件不包含 __ModuleLoader__ 包装：产物由 tsdown banner/footer 生成
+ * window.__ModuleLoader__.load({ id, factory }) 工厂。外部依赖（react 等）在打包时
  * external，运行时经 factory 的 require 解析到宿主模块表（seed）。
  *
- * 入口结构（统一弹框）：
- * - sidebar.footer.action：「Jenkins 配置」按钮（位于 dsh 配置按钮上方），
- *   打开统一弹框；显隐跟随「在菜单中显示」偏好（默认开启）。右侧小胶囊展示
- *   构建状态汇总与「有更新」新版本提示（点击进入更新确认 → 更新日志弹框）；
- * - settings.section（dsh-jenkins）：宿主「设置 → Jenkins 配置」分区页 ——
- *   「在菜单中显示」开关 + 打开插件弹框的入口（footer 入口关闭后的唯一入口）；
- * - shell.overlay（dsh-jenkins-config）：统一弹框，四个 tab —— 发布 / 配置 / 本机记录 / 历史记录，
- *   分别承载原执行 Job 弹框、设置页、发布历史弹框、服务器真实构建记录的内容；
+ * 入口结构（DSH 0.2.2-rc.1 改版，入口不再放侧边栏左下角）：
+ * - settings.section（id 'dsh-jenkins'，order 100）：设置弹框左侧菜单新增一格，
+ *   页面内嵌原「Jenkins 配置」统一弹框的全部内容（发布 / 配置 / 本机记录 /
+ *   历史记录 四个 tab；不套 ModalPortal 外壳）；标题行右侧保留任务状态胶囊
+ *   （构建中 / 成功未读 / 「有更新」新版本提示，点击进入更新确认 → 更新日志弹框）；
+ * - settings.section.icon（同 id）：左侧菜单导航图标（Jenkins logo）；
  * - shell.overlay（dsh-jenkins-update）：插件更新流程弹框（确认更新 / 更新日志）；
- * - 原 launcher / history 两个独立 overlay 注册已移除。
+ * - 原 sidebar.footer.action 注册与 shell.overlay（dsh-jenkins-config）统一弹框
+ *   注册已移除（内容迁入设置页内嵌渲染）；构建日志 / 服务器编辑 / 项目模板等
+ *   二级弹框仍是 body 顶层蒙版（ModalPortal），不受设置面板裁切。
+ *
+ * settings.section 注册包在 ctx.slots.inject('settings.section', ...) 里：
+ * 该 slot 由宿主 sidebar.settings 项挂载后才存在，seat 存在才注册。
  */
 
 import type { ReactNode } from 'react'
@@ -22,12 +25,11 @@ import { injectStyles } from './styles.ts'
 import { makeRun, type RunFn } from './rpc.ts'
 import { createStorage } from './storage.ts'
 import { createPoller } from './poller.ts'
-import { makeConfigModalStore, makeUpdateModalStore, type UpdateInfo } from './store.ts'
-import { FooterButton } from './components/FooterButton.tsx'
-import { PluginSettingsPage } from './components/PluginSettingsPage.tsx'
-import { JenkinsConfigModal } from './components/JenkinsConfigModal.tsx'
+import { makeUpdateModalStore, type UpdateInfo } from './store.ts'
+import { SettingsSection } from './components/SettingsSection.tsx'
 import { PluginUpdateModal } from './components/PluginUpdateModal.tsx'
-import { t, setLang } from './i18n.ts'
+import { JENKINS_LOGO } from './logo.ts'
+import { setLang, t } from './i18n.ts'
 
 /** 宿主 slots 服务最小视图。 */
 interface SlotsService {
@@ -35,12 +37,10 @@ interface SlotsService {
   register(def: Record<string, unknown>, component: unknown): () => void
 }
 
-/** 侧边栏 footer 插槽 key 与本插件入口 id。 */
-const FOOTER_SLOT = 'sidebar.footer.action'
-const FOOTER_ENTRY_ID = 'dsh-jenkins'
-
-/** 宿主设置对话框里本插件分区页的注册 id（settings.section 的 only 过滤键）。 */
-const SECTION_ID = 'dsh-jenkins'
+/** 设置弹框左侧菜单入口 slot 与本插件入口 id。 */
+const SECTION_SLOT = 'settings.section'
+const SECTION_ICON_SLOT = 'settings.section.icon'
+const SECTION_ENTRY_ID = 'dsh-jenkins'
 
 /** 浏览器侧插件上下文（宿主注入）。 */
 export interface ClientCtx {
@@ -68,10 +68,10 @@ export function createPlugin(): ClientPluginModule {
 
     apply(ctx: ClientCtx) {
       // ─── 语言跟随宿主：订阅宿主 locale 服务（软依赖）─────────────────
-      // 插件文案经 t()/getLang() 取词；slot 出口订阅宿主 locale revision，
-      // 语言切换时所有出口重渲染，t() 按当前 lang 解析即完成切换。宿主在
-      // locale 插件激活时才同步 <html lang>（早于用户持久化偏好的采纳），
-      // 静态解析只作 locale 服务缺失时的兜底。
+      // 插件文案经 t()/getLang() 取词；设置页导航 label 是注册时传入的 thunk，
+      // 宿主每次投影都重读，语言切换即换词，无需重注册。宿主在 locale 插件
+      // 激活时才同步 <html lang>（早于用户持久化偏好的采纳），静态解析只作
+      // locale 服务缺失时的兜底。
       interface LocaleFace {
         getSnapshot(): { active: string }
         subscribe(fn: () => void): () => void
@@ -90,7 +90,6 @@ export function createPlugin(): ClientPluginModule {
       }
 
       const run: RunFn = makeRun(ctx)
-      const { store: configStore, useOpen: useConfigOpen } = makeConfigModalStore()
       // 插件更新 store：版本信息（「有更新」胶囊显隐）+ 交互 UI 状态（确认弹框 → 日志大弹框）。
       const updateModalStore = makeUpdateModalStore()
       const slots = ctx.get<SlotsService>('slots')
@@ -99,11 +98,11 @@ export function createPlugin(): ClientPluginModule {
 
       // 宿主数据文件（$DSH_HOME/dsh-jenkins.json）：发布参数回显 + 发布历史，不落浏览器 localStorage。
       const storage = createStorage(run)
-      // 当前会话 id 追踪：footer 入口挂载时上报，供全局轮询/历史读取复用宿主命令。
+      // 当前会话 id 追踪：设置页入口挂载时上报，供全局轮询/历史读取复用宿主命令。
       const sessionRef: { current: string } = { current: '' }
       const getSession = (): string => sessionRef.current
 
-      // 全局构建状态轮询：与弹框生命周期解耦，关闭弹框后仍持续回填历史结果。
+      // 全局构建状态轮询：与入口页面生命周期解耦，关闭设置弹框后仍持续回填历史结果。
       // 空闲不轮询：无进行中任务时 tick 直接短路（零请求）；新任务触发 / 历史 tab
       // 打开会显式 refresh() 唤醒。启动时扫描一次，发现持久化的进行中任务即恢复轮询。
       const poller = createPoller(run, storage, getSession)
@@ -112,7 +111,7 @@ export function createPlugin(): ClientPluginModule {
 
       // ─── 插件新版本检查 ──────────────────────────────────────────
       // npm registry（keywords:dsh-jenkins）最新版 vs 被安装根目录 package.json，
-      // hasUpdate=true 时 footer 按钮最右侧显示【有更新】胶囊。宿主侧实时查询、
+      // hasUpdate=true 时设置页标题行右侧显示【有更新】胶囊。宿主侧实时查询、
       // 失败静默（不显示胶囊）。recheckUpdate 在更新进程成功结束后再次调用，
       // 用于让「更新」胶囊立即消失。
       const recheckUpdate = (): void => {
@@ -132,7 +131,7 @@ export function createPlugin(): ClientPluginModule {
 
       // ─── 对话中的 dsh-jenkins 命令行：兜底不渲染内部 JSON 结果 ──────────
       // 浏览器半边的请求已改走 /dsh-jenkins/api HTTP 路由（rpc.ts），不进入对话命令
-      // 通道，因此轮询/设置/执行弹框不再产生 command 节点。此 commandview 注册仅
+      // 通道，因此轮询/设置/发布页不再产生 command 节点。此 commandview 注册仅
       // 兜底「用户/模型在对话中显式执行 /dsh-jenkins 命令」的场景，隐藏 {"ok":true,...}
       // 内部 JSON 调试卡片（key 即命令名 command/run.name；未注册时回退通用命令卡片）。
       try {
@@ -142,65 +141,53 @@ export function createPlugin(): ClientPluginModule {
         ))
       } catch { /* 插槽未声明时静默降级（通用命令卡片渲染） */ }
 
-      // ─── 侧边栏底部入口：常驻「Jenkins 配置」按钮（footer.action 区，
-      //     渲染在 sidebar.settings（dsh 配置按钮）上方），打开统一弹框 ──
-      //     order: 20 —— 宿主对 list 型插槽按声明 order 升序渲染
-      //     （dsh-client-ui-renderer：order ?? 0），显式固定本入口在
-      //     FooterActions 中的排位；styles.ts 已把该列表容器改为纵向
-      //     堆叠，多个按钮各占一行、不挤在一行。
-      slots.inject(FOOTER_SLOT, () => slots.register(
-        { name: FOOTER_SLOT, id: FOOTER_ENTRY_ID, order: 20 },
-        (props: Record<string, unknown>) => (
-          <FooterButton
-            onOpen={() => configStore.open(true)}
-            reportSession={(s) => { if (s) sessionRef.current = s }}
-            wide={props.wide as boolean | undefined}
-            useSessions={props.useSessions as FooterWorkspaceHooks['useSessions']}
-            poller={poller}
-            useUpdate={updateModalStore.useUpdate}
-            onUpdateRequest={() => updateModalStore.openUpdateConfirm()}
-          />
-        ),
-      ))
-
-      // ─── 宿主「设置 → Jenkins 配置」分区页（settings.section）──────────
-      // 页面承载「在菜单中显示」开关（与 footer 入口同一偏好源）+ 打开插件
-      // 弹框的入口：侧栏入口被关闭后，这里是唯一可达入口。order 41 排在宿主
-      // 内置 sections 与 dsh-model-list（order 40）之后。
-      slots.inject('settings.section', () => slots.register(
+      // ─── 设置弹框左侧菜单入口（0.2.2-rc.1 改版：入口移入设置弹框）──────
+      //     id = 包名（绝不复用内置 id：account/general/models/plugins/agent-presets）；
+      //     order: 100 —— 升序排在内置项之后；label 用 i18n thunk，宿主每次投影
+      //     重读，语言切换自动换词。注册包在 slots.inject 里：settings.section 由
+      //     宿主 sidebar.settings 项挂载后才存在，seat 存在才注册。
+      //     组件收到宿主标准插槽 hooks（useWorkspaces / useSessions，与原
+      //     shell.overlay 同款注入），工作区 / 会话推导逻辑从旧入口原样迁移。
+      slots.inject(SECTION_SLOT, () => slots.register(
         {
-          name: 'settings.section',
-          id: SECTION_ID,
-          order: 41,
-          label: () => t('settingsNav'),
+          name: SECTION_SLOT,
+          id: SECTION_ENTRY_ID,
+          order: 100,
+          label: (): string => t('settingsNav'),
         },
         (props: Record<string, unknown>) => (
-          <PluginSettingsPage
-            onOpen={() => configStore.open(true)}
-            close={typeof props.close === 'function' ? (props.close as () => void) : () => { /* 宿主未提供 close 时忽略 */ }}
-          />
-        ),
-      ))
-
-      // ─── 统一「Jenkins 配置」弹框（发布 / 配置 / 历史 三 tab）──────────
-      slots.inject('shell.overlay', () => slots.register(
-        { name: 'shell.overlay', id: 'dsh-jenkins-config', order: 100 },
-        (props: Record<string, unknown>) => (
-          <JenkinsConfigModal
+          <SettingsSection
             run={run}
             poller={poller}
             storage={storage}
-            useOpen={useConfigOpen}
-            close={() => configStore.close()}
-            useWorkspaces={props.useWorkspaces as ModalWorkspaceHooks['useWorkspaces']}
-            useSessions={props.useSessions as ModalWorkspaceHooks['useSessions']}
+            useUpdate={updateModalStore.useUpdate}
+            onUpdateRequest={() => updateModalStore.openUpdateConfirm()}
+            reportSession={(s) => { if (s) sessionRef.current = s }}
+            useWorkspaces={props.useWorkspaces as SectionWorkspaceHooks['useWorkspaces']}
+            useSessions={props.useSessions as SectionWorkspaceHooks['useSessions']}
           />
         ),
       ))
+      // 导航图标：注册 id 必须等于 section id；组件收到 { size, active }。
+      slots.inject(SECTION_ICON_SLOT, () => slots.register(
+        { name: SECTION_ICON_SLOT, id: SECTION_ENTRY_ID, order: 100 },
+        (props: Record<string, unknown>) => (
+          <img
+            src={JENKINS_LOGO}
+            alt=""
+            aria-hidden="true"
+            className="dshj-section-icon"
+            width={props.size as number | undefined}
+            height={props.size as number | undefined}
+          />
+        ),
+      ))
+
       // ─── 插件更新流程弹框（确认更新 / 更新日志大弹框）────────────
-      // footer「有更新」胶囊 → 确认弹框 → 确认后打开更新日志大弹框（后台执行
+      // 设置页「有更新」胶囊 → 确认弹框 → 确认后打开更新日志大弹框（后台执行
       // dsh plugin --profile web update dsh-jenkins 并每 600ms 轮询日志；
       // 成功结束后 recheckUpdate 重查版本，让「更新」胶囊消失）。
+      // 二级大弹框继续走 shell.overlay，不随入口内嵌进设置页。
       slots.inject('shell.overlay', () => slots.register(
         { name: 'shell.overlay', id: 'dsh-jenkins-update', order: 200 },
         () => (
@@ -218,15 +205,10 @@ export function createPlugin(): ClientPluginModule {
   }
 }
 
-/** footer slot 宿主注入的 hooks 形状。 */
-interface FooterWorkspaceHooks {
-  useSessions(selector: (s: { current?: string }) => unknown): unknown
-}
-
-/** overlay slot 宿主注入的 hooks 形状。 */
-interface ModalWorkspaceHooks {
-  useWorkspaces(selector: (s: { items?: Array<{ path?: string; sessionIds?: string[] }> }) => unknown): unknown
-  useSessions(selector: (s: { current?: string }) => unknown): unknown
+/** settings.section slot 宿主注入的 hooks 形状。 */
+interface SectionWorkspaceHooks {
+  useWorkspaces?: (selector: (s: { items?: Array<{ path?: string; sessionIds?: string[] }> }) => unknown) => unknown
+  useSessions?: (selector: (s: { current?: string }) => unknown) => unknown
 }
 
 export type { ReactNode }

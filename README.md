@@ -14,7 +14,7 @@ host, centralizing multiple servers and jobs for fast build publishing.
 - **Logs & operations** — view build logs, stop or cancel builds at any time
 - **Bilingual UI** — follows the host interface language (中文 / English)
 
-Available from the Settings page, a per-workspace entry, and model tools.
+Available from the Settings page (the single UI entry since DSH 0.2.2-rc.1) and model tools.
 
 [中文文档](README.zh.md)
 
@@ -24,9 +24,16 @@ Screenshots of the Settings page, workspace entry and run/history modals: see [p
 
 ## Features
 
-- **Settings → Jenkins Config** page (`settings.section`): add / edit / delete
-  multiple servers (URL, username, Token), test connections, skip TLS verification.
-  Only **Server URL** and **Token** are required (username defaults to `admin`).
+- **Settings → Jenkins Config** page (`settings.section` — the single UI entry): a
+  "Jenkins Config" row (with a Jenkins-logo nav icon) in the settings dialog's left
+  menu; the page embeds four tabs — **Publish / Config / Local records / Server
+  history**. Its title row carries the task status capsules (building / done-unread /
+  "Update" pill) and a **workspace picker** (defaults to the current session's
+  workspace, manually switchable). Add / edit / delete multiple servers (URL,
+  username, Token), test connections, skip TLS verification. Only **Server URL** and
+  **Token** are required (username defaults to `admin`). Secondary modals (build log /
+  server editor / project config / update changelog) render as top-level viewport
+  overlays, never clipped by the settings panel.
 - **Project Config** (`$DSH_HOME/dsh-jenkins-map.json`): every project's publish
   targets in one file — project name → target array, with elements identical to a
   workspace config file (`{ name?, job, server, environments }`). Each env can carry a
@@ -37,41 +44,33 @@ Screenshots of the Settings page, workspace entry and run/history modals: see [p
   there is usually nothing to maintain by hand; to edit, click **Edit map** on the
   Project Config row of the Config tab (form / JSON). See
   [Project config](#project-config-dsh-jenkins-mapjson).
-- **Workspace entry** (`sidebar.footer.action`): a footer group with the **Jenkins
-  logo button** (opens the unified modal) and a **History button** (clock icon,
-  publish history of the last 50 runs across all workspaces, filterable by
-  workspace — defaults to All).
-  The Publish tab has just three rows — **project → server → job** — then the
-  parameter form, build triggering and status polling (queued → building → result,
-  10-minute timeout). **The env has no row of its own**: each env in a project
-  config *is* a server, so env selection lives in the **Server** dropdown — whose
-  labels show **only the plugin's server name** (never a mix of the config's env
-  name and the server name), and picking one switches the job / params to that env.
-  Config `server` refs are matched against configured servers by
+- **Publish tab** (inside the settings page): just three rows — **project → server →
+  job** — then the parameter form, build triggering and status polling (queued →
+  building → result, 10-minute timeout). **The env has no row of its own**: each env
+  in a project config *is* a server, so env selection lives in the **Server**
+  dropdown — whose labels show **only the plugin's server name** (never a mix of the
+  config's env name and the server name), and picking one switches the job / params
+  to that env. Config `server` refs are matched against configured servers by
   **name → id → full URL → domain** (the domain level ignores scheme, port and
   context path). The dropdown shows the **intersection of the servers referenced by
   the project config and the servers configured in the plugin**; the last
   **parameters** are remembered per project and auto-echoed next time.
-- **Entry visibility**: the sidebar entry follows a **Show in menu** preference
-  (default on), toggled from **Settings → Jenkins Config** or the top of the
-  modal's **Config** tab. When off the entry renders nothing; the host settings
-  page keeps an **Open Jenkins Config** button so the modal stays reachable
-  (both places share one preference source and stay in sync).
 - **Model tools** (docs/develop/basic/tool): `dsh_jenkins_build`, `dsh_jenkins_status`.
 - **Config** (docs/develop/basic/config): Schemastery `Config` + a plugin data file
   `$DSH_HOME/dsh-jenkins.json` (server tokens encrypted with the machine-bound key
   `$DSH_HOME/dsh-jenkins.key`, cache in plaintext); the project config is its own
-  file `$DSH_HOME/dsh-jenkins-map.json` (plaintext, hand-editable). On first run any
-  legacy `dsh-jenkins` namespace in `settings.yaml` is migrated once and cleared; a
-  legacy `projects` field inside `dsh-jenkins.json` is migrated into the new file
-  (missing-only).
+  file `$DSH_HOME/dsh-jenkins-map.json` (plaintext, hand-editable). Since DSH
+  0.2.2-rc.1 the legacy `settings.yaml` document is migrated by the host framework
+  itself — the plugin no longer reads or writes it (when the data file is missing it
+  is seeded from the bundle entry's `config.servers`); a legacy `projects` field
+  inside `dsh-jenkins.json` is migrated into the new file (missing-only).
 - **Packaging** (docs/develop/basic/publish): `dsh.bundle` + `dsh.client`(web) manifests.
 
 ## Structure
 
 ```
 ├── src/host/*.ts       # Host half: index.ts (entry), jenkins.ts (curl core), ops.ts (op dispatch), project-map.ts (project config file), projects.ts (normalize/merge), workspace-config.ts, types.ts
-├── src/client/*.tsx    # Browser half (React TSX): settings page, footer entry, publish modal, project config modal, history modal
+├── src/client/*.tsx    # Browser half (React TSX): settings.section entry page (embedded 4 tabs), publish/project/history tabs, secondary modals
 ├── lib/index.js        # Host half build artifact (tsdown, ESM), committed for git installs
 ├── lib/client.js       # Browser half build artifact (tsdown → __ModuleLoader__ factory), committed
 ├── lib/types/          # Type declarations (generated by tsc -b)
@@ -384,19 +383,18 @@ failure:
   command channel `ctx.remote.commands.execute(sessionId, '/dsh-jenkins <json>')`. Host errors carry
   a `code` that the client localizes (fallback to the raw message).
 - Peer dependencies (`@deepseek-ai/cordis`, `dsh-tools`, `schemastery`, `dsh-settings`,
-  `dsh-commands`, `dsh-session`, `dsh-api-remotes`, client runtime/ui-slots/ui-settings/
-  cordis-client-runner, `react`) are resolved by the host at install time.
+  `dsh-commands`, `dsh-session`, `dsh-api-remotes`, `dsh-client-ui-slots`,
+  `dsh-client-ui-settings`, `dsh-cordis-client-runner`, `react`) are resolved by the
+  host at install time, pinned to the host's 0.2.2-rc.1 line (cordis `~4.1.0`).
 - The official `deepseek-harness` project is **not modified**; all features use existing
-  slots (`sidebar.footer.action`, `settings.section`, `shell.overlay`) and the command
-  transport.
-- **Style isolation**: every rule in the injected stylesheet is scoped to `.dshj-*`
-  with one deliberate exception — `:where(div:has(> [data-slot="sidebar.footer.action"] > .dshj-footer-group)){flex-direction:column}`,
-  which stacks the host footer container (the host lays it out as a flex **row**, so
-  several plugin entries would squeeze onto one line). It can only match a container
-  that already holds **this plugin's own entry**, and `:where()` drops its specificity
-  to 0 so the host can always override it. Keyframe names are `dshj-`-prefixed and the
-  style tag is marked `data-plugin-css="dsh-jenkins/settings.css"`; no other global
-  selector, no `:root`/`body`/`*` rule, no body-style mutation.
+  slots (`settings.section`, `settings.section.icon`, `shell.overlay`,
+  `conversation.chat.commandview`) and the command transport.
+- **Style isolation**: every rule in the injected stylesheet is scoped to `.dshj-*` —
+  no other global selector, no `:root`/`body`/`*` rule, no body-style mutation
+  (the pre-0.2.2 `:where(div:has(> [data-slot="sidebar.footer.action"] ...))` footer
+  stacking exception retired together with the sidebar entry). Keyframe names are
+  `dshj-`-prefixed and the style tag is marked
+  `data-plugin-css="dsh-jenkins/settings.css"`.
 - **Dialog palette**: the modals follow dsh-get-balance — a `rgba(0,0,0,.32)` scrim
   with `blur(12px) saturate(1.2)`, a `color-mix(bg-layer-1 78%)` glass panel with a
   `border-l2` hairline and 14px radius, `border-l1` header/footer dividers, solid

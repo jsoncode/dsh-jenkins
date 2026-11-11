@@ -1,35 +1,16 @@
 /**
- * dsh-jenkins —— 浏览器半边：统一「Jenkins 配置」弹框开关（footer 入口 ↔ overlay 弹框共享）。
+ * dsh-jenkins —— 浏览器半边：共享 store（设置页入口 ↔ shell.overlay 更新弹框共享）。
  *
- * 入口与弹框合并为单一弹框（tab：发布 / 配置 / 历史）后，不再需要独立的
- * 发布（LaunchInfo）与历史（cwd）store —— 弹框内自行按当前工作区推导数据。
- * footer 按钮排序功能已移除：入口注册不传 order，使用宿主默认排序。
+ * 入口迁移到设置弹框左侧菜单（settings.section 内嵌渲染）后不再需要弹框开关
+ * store；保留插件更新 store —— 「有更新」胶囊在设置页渲染，确认 / 日志弹框
+ * 挂在 shell.overlay，两侧共享同一份版本与 UI 状态。
  */
-export interface LaunchInfo {
-    cwd: string;
-    config: {
-        entries: Array<{
-            job: string;
-            server: string;
-            parameters?: Record<string, string | number | boolean>;
-        }>;
-    } | null;
-    sessionId: string;
-}
 export interface StoreState<T> {
     value: T | null;
     listeners: Array<() => void>;
     emit(): void;
     subscribe(l: () => void): () => void;
-    open(value: T): void;
-    close(): void;
 }
-export interface ConfigModalStore {
-    store: StoreState<boolean>;
-    useOpen(): boolean;
-}
-/** 统一「Jenkins 配置」弹框的打开状态（footer 入口 open，overlay 弹框消费）。 */
-export declare function makeConfigModalStore(): ConfigModalStore;
 /** 插件更新检查结果（宿主 updateCheck op 载荷）。 */
 export interface UpdateInfo {
     /** 被安装根目录 package.json 的当前版本。 */
